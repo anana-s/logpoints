@@ -1,8 +1,12 @@
 package anana5.sense.graph.java;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import com.google.common.graph.Graph;
+
+import anana5.sense.graph.java.EFGraph.Vertex;
 import soot.PackManager;
 import soot.Scene;
 import soot.SceneTransformer;
@@ -21,34 +25,19 @@ public class Main {
         @Override
         protected void internalTransform(String phaseName, Map<String, String> options) {
             CallGraph cg = Scene.v().getCallGraph();
-            ICFGBuilder builder = new PrintICFGBuilder();
-    
-            (new DFS<SootMethod>((m, methods) -> {
-                if (m.isJavaLibraryMethod() || m.isPhantom() || !m.isConcrete()) {
-                    return;
-                }
-    
-                ExceptionalGraph<Unit> g = new ExceptionalUnitGraph(m.retrieveActiveBody());
-    
-                List<Unit> heads = g.getHeads();
-    
-                for (Unit u : heads) {
-                    builder.add(m, u);
-                }
-    
-                (new DFS<Unit>((u, units) -> {
-                    for (Edge e : (Iterable<Edge>)() -> cg.edgesOutOf(u)) {
-                        SootMethod n = e.tgt();
-                        builder.add(u, n);
-                        methods.accept(e.tgt());
-                    }
 
-                    for (Unit v : g.getSuccsOf(u)) {
-                        builder.add(u, v);
-                        units.accept(v);
-                    }
-                })).on(heads);
-            })).on(Scene.v().getEntryPoints());   
+            List<SootMethod> entrypoints = Scene.v().getEntryPoints();
+            entrypoints.removeIf(m -> !EFGraph.mfilter(m));
+
+            EFGraph ef = new EFGraph(cg, entrypoints);
+
+            GraphPrinter printer = new GraphPrinter();
+            ef.traverse(u -> {
+                for (Vertex v : u.successors()) {
+                    printer.print(u, v);
+                }
+                return true;
+            });
         }
     }
 
