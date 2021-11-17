@@ -1,9 +1,8 @@
 package anana5.sense.graph.java;
 
-public class MutuallyRecursive {
+public class IndirectInvoke {
     public static void greet() {
         System.out.println("sweet pineapple");
-        indirect();
     }
 
     public static void indirect() {
