@@ -7,7 +7,11 @@ public class Delayed<T> implements D<T> {
         set(() -> ref);
     }
     public Delayed(D<T> d) {
-        set(d);
+        if (d instanceof Delayed<?>) {
+            set(((Delayed<T>)d).d);
+        } else {
+            set(d);
+        }
     }
     public Delayed<T> set(D<T> d) {
         this.d = d;

@@ -102,7 +102,11 @@ public class EFGraph {
 
         public Vertex(D<Node<?, Vertex>> n) {
             super(n);
-        } 
+        }
+
+        public Vertex(Object ref, List<Vertex> successors) {
+            set(() -> new Node<>(ref, successors));
+        }
 
         public Vertex(SootMethod method) {
             this(method, new ArrayList<>(), new Path());
@@ -182,16 +186,20 @@ public class EFGraph {
             });
         }
 
-        public <R> R fold(Function<Node<?, R>, R> f) {
-            return f.apply(get().map(v -> v.fold(f)));
+        public <R> D<R> fold(Function<Node<?, D<R>>, R> f) {
+            return fold(f, new HashMap<>());
+        }
+
+        private <R> D<R> fold(Function<Node<?, D<R>>, R> f, Map<Vertex, D<R>> cache) {
+            return cache.computeIfAbsent(this, t -> new Delayed<>(() -> f.apply(get().map(v -> v.fold(f, cache)))));
         }
 
         public Vertex filter(Predicate<Object> p) {
-            return fold(node -> {
+            return (Vertex)fold((Node<?, D<Node<?, Vertex>>> node) -> {
                 if (!p.test(node.ref)) {
-                    return new Vertex();
+                    return null;
                 }
-                return new Vertex(() -> node.filter());
+                return node.map(d -> d.get()).filter(n -> n != null).map(n -> new Vertex(() -> n));
             });
         }
 
@@ -240,11 +248,11 @@ public class EFGraph {
         }
     }
     
-    public void map(Function<Node<?, Stream<Vertex>>, Stream<Vertex>> f) {
-        entrypoints = smap(vs -> vs.map(v -> v.fold(f)).flatMap(Function.identity()));
+    public void map(Function<Node<?, D<List<Vertex>>>, List<Vertex>> f) {
+        entrypoints = smap(vs -> vs.map(v -> v.fold(f).get()).flatMap(List::stream));
     }
     
-    public <R> List<R> fold(Function<Node<?, R>, R> f) {
+    public <R> List<D<R>> fold(Function<Node<?, D<R>>, R> f) {
         return smap(ss -> ss.map(v -> v.fold(f)));
     }
 

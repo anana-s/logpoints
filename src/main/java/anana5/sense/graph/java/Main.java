@@ -1,13 +1,18 @@
 package anana5.sense.graph.java;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
+import anana5.sense.graph.java.EFGraph.Node;
+import anana5.sense.graph.java.EFGraph.Vertex;
 import soot.PackManager;
 import soot.Scene;
 import soot.SceneTransformer;
 import soot.SootMethod;
 import soot.Transform;
+import soot.jimple.InvokeStmt;
 import soot.jimple.toolkits.callgraph.CallGraph;
 import soot.options.Options;
 
@@ -23,13 +28,13 @@ public class Main {
 
             EFGraph ef = new EFGraph(cg, entrypoints);
 
-            // ef.map((Object ref, Stream<Stream<Vertex>> vs) -> {
-            //     Stream<Vertex> suc = vs.flatMap(Function.identity());
-            //     if (ref instanceof InvokeStmt) {
-            //         return Stream.of(ef.new Vertex(ref, suc));
-            //     }
-            //     return suc;
-            // });
+            ef.map(node -> {
+                List<Vertex> sucs = node.successors.stream().map(d -> d.get()).flatMap(List::stream).collect(Collectors.toList());
+                if (node.ref instanceof InvokeStmt) {
+                    return Collections.singletonList(ef.new Vertex(node.ref, sucs));
+                }
+                return sucs;
+            });
 
             GraphPrinter printer = new GraphPrinter();
             ef.traverse(u -> {
