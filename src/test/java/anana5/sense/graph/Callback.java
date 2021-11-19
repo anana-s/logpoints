@@ -2,6 +2,7 @@ package anana5.sense.graph;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 public class Callback {
     @FunctionalInterface
@@ -9,18 +10,18 @@ public class Callback {
         public void accept(String s);
     }
     
-    List<ICallBack> callbacks;
+    List<Consumer<String>> callbacks;
 
     public Callback() {
         callbacks = new ArrayList<>();
     }
 
-    public void add(ICallBack callback) {
+    public void add(Consumer<String> callback) {
         callbacks.add(callback);
     }
 
     public void run() {
-        for (ICallBack callback : callbacks) {
+        for (Consumer<String> callback : callbacks) {
             callback.accept("sweet pineapple");
         }
     }

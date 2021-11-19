@@ -11,9 +11,9 @@ public class MultiPathIndirectInvoke {
 
     public static void main(String[] args) {
         if (args.length == 0) {
-            System.out.println("sweet pineapple");
+            greet();
         } else {
-            System.out.println("sweet pineapple");
+            indirect();
         }
     }
 }

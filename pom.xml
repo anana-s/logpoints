@@ -53,7 +53,7 @@
               <configuration>
                 <archive>
                   <manifest>
-                    <mainClass>anana5.sense.graph.java.Main</mainClass>
+                    <mainClass>anana5.sense.graph.Main</mainClass>
                   </manifest>
                 </archive>
                 <descriptorRefs>

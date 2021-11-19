@@ -81,10 +81,12 @@ public class EFGraph {
             if (!mfilter(method)) {
                 scs = rets;
             } else {
-                Path<Object, Vertex>  newPath = path.push(method, this);
-                ExceptionalUnitGraph g = new ExceptionalUnitGraph(method.getActiveBody());
-                Map<Unit, Vertex> visited = new WeakHashMap<>();
-                scs = () -> new Node<>(g.getHeads()).map(u -> visited.computeIfAbsent(u, v -> new Vertex((Stmt)v, g, rets, newPath, visited)));
+                scs = () -> {
+                    Path<Object, Vertex>  newPath = path.push(method, this);
+                    ExceptionalUnitGraph g = new ExceptionalUnitGraph(method.getActiveBody());
+                    Map<Unit, Vertex> visited = new WeakHashMap<>();
+                    return new Node<>(g.getHeads()).map(u -> visited.computeIfAbsent(u, v -> new Vertex((Stmt)v, g, rets, newPath, visited)));
+                };
             }
         }
 
