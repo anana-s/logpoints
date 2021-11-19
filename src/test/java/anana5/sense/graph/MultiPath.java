@@ -1,4 +1,4 @@
-package anana5.sense.graph.java;
+package anana5.sense.graph;
 
 public class MultiPath {
     public static void main(String[] args) {

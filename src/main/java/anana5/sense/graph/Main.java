@@ -1,12 +1,9 @@
-package anana5.sense.graph.java;
+package anana5.sense.graph;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
-import anana5.sense.graph.java.EFGraph.Node;
-import anana5.sense.graph.java.EFGraph.Vertex;
+import anana5.sense.graph.EFGraph.Vertex;
 import soot.PackManager;
 import soot.Scene;
 import soot.SceneTransformer;
@@ -26,23 +23,22 @@ public class Main {
             List<SootMethod> entrypoints = Scene.v().getEntryPoints();
             entrypoints.removeIf(m -> !EFGraph.mfilter(m));
 
-            EFGraph ef = new EFGraph(cg, entrypoints);
+            GraphPrinter printer = new GraphVizPrinter();
 
-            ef.map(node -> {
-                List<Vertex> sucs = node.successors.stream().map(d -> d.get()).flatMap(List::stream).collect(Collectors.toList());
-                if (node.ref instanceof InvokeStmt) {
-                    return Collections.singletonList(ef.new Vertex(node.ref, sucs));
-                }
-                return sucs;
-            });
+            Defered<?> asdf = ((Defered<EFGraph>)() -> new EFGraph(cg, entrypoints))
+                .bind(g -> g.filter(ref -> ref instanceof InvokeStmt))
+                .bind(g -> g.traverse(u -> {
+                    u.scs.map(n -> {
+                        for (Vertex v : n) {
+                            printer.print(u, v);
+                        }
+                        return null;
+                    }).compute();
+                    return true;
+                })
+            );
 
-            GraphPrinter printer = new GraphPrinter();
-            ef.traverse(u -> {
-                for (EFGraph.Vertex v : u.successors) {
-                    printer.print(u, v.get());
-                }
-                return true;
-            });
+            asdf.compute();
         }
     }
 
