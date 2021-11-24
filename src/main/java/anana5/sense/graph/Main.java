@@ -25,7 +25,7 @@ public class Main {
 
             GraphPrinter printer = new GraphVizPrinter();
 
-            Defered<?> defered = ((Defered<EFGraph>)() -> new EFGraph(cg, entrypoints))
+            D<?> defered = ((D<EFGraph>)() -> new EFGraph(cg, entrypoints))
                 .bind(g -> g.filter(ref -> ref instanceof InvokeStmt))
                 .bind(g -> g.traverse(u -> {
                     u.scs.map(n -> {

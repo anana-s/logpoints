@@ -60,14 +60,14 @@ public class EFGraph {
 
     public class Vertex {
         public Object ref;
-        public Defered<Node<Vertex>> scs;
+        public D<Node<Vertex>> scs;
 
         public Vertex(Object ref) {
             this.ref = ref;
             this.scs = () -> new Node<>();
         }
 
-        public Vertex(Object ref, Defered<Node<Vertex>> scs) {
+        public Vertex(Object ref, D<Node<Vertex>> scs) {
             this.ref = ref;
             this.scs = scs;
         }
@@ -76,7 +76,7 @@ public class EFGraph {
             this(method, () -> new Node<>(), new Path<>());
         }
 
-        public Vertex(SootMethod method, Defered<Node<Vertex>> rets, Path<Object, Vertex> path) {
+        public Vertex(SootMethod method, D<Node<Vertex>> rets, Path<Object, Vertex> path) {
             ref = method;
             if (!mfilter(method)) {
                 scs = rets;
@@ -90,18 +90,18 @@ public class EFGraph {
             }
         }
 
-        private Defered<Node<Vertex>> succs(Stmt stmt, ExceptionalGraph<Unit> g, Defered<Node<Vertex>> rets, Path<Object, Vertex>  path, Map<Unit, Vertex> visited) {
+        private D<Node<Vertex>> succs(Stmt stmt, ExceptionalGraph<Unit> g, D<Node<Vertex>> rets, Path<Object, Vertex>  path, Map<Unit, Vertex> visited) {
             return () -> {
                 List<Unit> units = g.getSuccsOf(stmt);
                 if (units.isEmpty()) {
-                    return rets.value();
+                    return rets.get();
                 } else {
                     return new Node<>(units).map(u -> visited.computeIfAbsent(u, v -> new Vertex((Stmt)v, g, rets, path, visited)));
                 }
             };
         }
 
-        private Vertex find(SootMethod method, Defered<Node<Vertex>> rets, Path<Object, Vertex> path) {
+        private Vertex find(SootMethod method, D<Node<Vertex>> rets, Path<Object, Vertex> path) {
             Vertex target = path.find(method);
             if (target != null) {
                 return target;
@@ -110,7 +110,7 @@ public class EFGraph {
             }
         }
 
-        private Vertex(Stmt stmt, ExceptionalGraph<Unit> g, Defered<Node<Vertex>> rets, Path<Object, Vertex>  path, Map<Unit, Vertex> visited) {
+        private Vertex(Stmt stmt, ExceptionalGraph<Unit> g, D<Node<Vertex>> rets, Path<Object, Vertex>  path, Map<Unit, Vertex> visited) {
             ref = stmt;
             scs = () -> {
                 if (stmt.containsInvokeExpr()) {
@@ -125,16 +125,16 @@ public class EFGraph {
                             return node;
                         }
                 } else {
-                    return succs(stmt, g, rets, path, visited).value();
+                    return succs(stmt, g, rets, path, visited).get();
                 }
             };
         }
 
-        public <R> R fold(Supplier<R> base, BiFunction<Object, Defered<Node<R>>, R> f) {
+        public <R> R fold(Supplier<R> base, BiFunction<Object, D<Node<R>>, R> f) {
             return fold(base, f, Collections.newSetFromMap(new WeakHashMap<>()), new WeakHashMap<>());
         }
 
-        private <R> R fold(Supplier<R> base, BiFunction<Object, Defered<Node<R>>, R> f, Set<Vertex> seen, Map<Vertex, R> visited) {
+        private <R> R fold(Supplier<R> base, BiFunction<Object, D<Node<R>>, R> f, Set<Vertex> seen, Map<Vertex, R> visited) {
             if (visited.containsKey(this)) {
                 return visited.get(this);
             }
@@ -147,11 +147,11 @@ public class EFGraph {
 
         public Node<Vertex> filter(Predicate<Object> p) {
             return fold(() -> new Node<>(), (ref, dnnv) -> {
-                Defered<Node<Vertex>> dnv = dnnv.map(nnv -> nnv.flatmap(Function.identity()));
+                D<Node<Vertex>> dnv = dnnv.map(nnv -> nnv.flatmap(Function.identity()));
                 if (p.test(ref)) {
                     return new Node<>(new Vertex(ref, dnv));
                 } else {
-                    return dnv.value();
+                    return dnv.get();
                 }
             });
         }
@@ -168,7 +168,7 @@ public class EFGraph {
                 if (!visitor.test(v)) {
                     continue;
                 }
-                stack.addAll(v.scs.value());
+                stack.addAll(v.scs.get());
             }
         }
         @Override
@@ -179,7 +179,7 @@ public class EFGraph {
 
     Set<Vertex> nodes = new HashSet<>();
     CallGraph cg;
-    Defered<Node<Vertex>> entrypoints;
+    D<Node<Vertex>> entrypoints;
 
     static boolean mfilter(SootMethod m) {
         return !m.isJavaLibraryMethod() && !m.isPhantom() && m.isConcrete();
@@ -190,7 +190,7 @@ public class EFGraph {
         this.entrypoints = () -> new Node<SootMethod>(entrypoints).map(m -> new Vertex(m));
     }
 
-    public Defered<Void> traverse(Predicate<Vertex> visitor) {
+    public D<Void> traverse(Predicate<Vertex> visitor) {
         Set<Vertex> visited = new HashSet<>();
         return entrypoints.map(n -> {
             n.forEach(v -> {
@@ -200,18 +200,18 @@ public class EFGraph {
         });
     }
 
-    public <R> Defered<EFGraph> transform(BiFunction<Object, Defered<Node<Vertex>>, Vertex> f) {
+    public <R> D<EFGraph> transform(BiFunction<Object, D<Node<Vertex>>, Vertex> f) {
         return () -> {
             entrypoints = entrypoints.bind(n -> fold(() -> null, f));
             return this;
         };
     }
     
-    public <R> Defered<Node<R>> fold(Supplier<R> base, BiFunction<Object, Defered<Node<R>>, R> f) {
+    public <R> D<Node<R>> fold(Supplier<R> base, BiFunction<Object, D<Node<R>>, R> f) {
         return entrypoints.map(n -> n.map(v -> v.fold(base, f)));
     }
 
-    public Defered<EFGraph> filter(Predicate<Object> p) {
+    public D<EFGraph> filter(Predicate<Object> p) {
         return () -> {
             entrypoints = entrypoints.map(n -> n.flatmap(v -> v.filter(p)));
             return this;
