@@ -18,27 +18,30 @@ public class Main {
     public static class ICFGTransformer extends SceneTransformer {
         @Override
         protected void internalTransform(String phaseName, Map<String, String> options) {
-            CallGraph cg = Scene.v().getCallGraph();
+
+            CallGraph callgraph = Scene.v().getCallGraph();
 
             List<SootMethod> entrypoints = Scene.v().getEntryPoints();
-            entrypoints.removeIf(m -> !EFGraph.mfilter(m));
 
-            GraphPrinter printer = new GraphVizPrinter();
+            Jungle<Object> flow = new ExecutionFlowJungle(callgraph, entrypoints);
+            // entrypoints.removeIf(m -> !EFGraph.mfilter(m));
 
-            D<?> defered = ((D<EFGraph>)() -> new EFGraph(cg, entrypoints))
-                .bind(g -> g.filter(ref -> ref instanceof InvokeStmt))
-                .bind(g -> g.traverse(u -> {
-                    u.scs.map(n -> {
-                        for (Vertex v : n) {
-                            printer.print(u, v);
-                        }
-                        return null;
-                    }).compute();
-                    return true;
-                })
-            );
+            // GraphPrinter printer = new GraphVizPrinter();
 
-            defered.compute();
+            // D<?> defered = ((D<EFGraph>)() -> new EFGraph(cg, entrypoints))
+            //     .bind(g -> g.filter(ref -> ref instanceof InvokeStmt && ref.toString().contains("println")))
+            //     .bind(g -> g.traverse(u -> {
+            //         u.scs.map(n -> {
+            //             for (Vertex v : n) {
+            //                 printer.print(u, v);
+            //             }
+            //             return null;
+            //         }).compute();
+            //         return true;
+            //     })
+            // );
+
+            // defered.compute();
         }
     }
 

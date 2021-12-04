@@ -17,6 +17,7 @@ public class Callback {
     }
 
     public void add(Consumer<String> callback) {
+        System.out.println("Added Callback: " + callback.toString());
         callbacks.add(callback);
     }
 
@@ -35,6 +36,7 @@ public class Callback {
     }
 
     public static void main(String[] args) {
+        System.out.println("Callbacks started");
         Callback o = new Callback();
         o.add(phrase -> System.out.println(phrase));
         o.add(phrase -> say(phrase));
