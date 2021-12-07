@@ -42,7 +42,7 @@ public class Main {
             };
 
             try (PrintStream out = new PrintStream(new File(dir, Scene.v().getMainClass().getName() + ".dot"))) {
-                try (GraphVizPrinter printer = new GraphVizPrinter(out)) {
+                try (GraphVizPrinter printer = new GraphVizPrinter(System.out)) {
                     flow.traverse((u, successors) -> {
                         if (counter.value++ > 100) {
                             throw new RuntimeException();

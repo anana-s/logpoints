@@ -2,7 +2,6 @@ package anana5.sense.graph;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -18,7 +17,7 @@ public class Jungle<T> {
 
     CGraphF<T, Jungle<T>> cgraph;
 
-    Jungle(CGraphF<T, Jungle<T>> dnodes) {
+    public Jungle(CGraphF<T, Jungle<T>> dnodes) {
         this.cgraph = dnodes;
     }
 
@@ -29,8 +28,12 @@ public class Jungle<T> {
     public Jungle() {
         this(new CGraphF<>());
     }
+    
+    public Jungle(Supplier<? extends Collection<? extends NodeF<T, Jungle<T>>>> supplier) {
+        this(new CGraphF<>(supplier));
+    }
 
-    <S> Jungle(Function<S, ? extends CGraphF<T, S>> f, S s) {
+    public <S> Jungle(Function<S, ? extends CGraphF<T, S>> f, S s) {
         this.cgraph = f.apply(s).map(s$ -> new Jungle<>(f, s$));
     }
 
@@ -56,18 +59,24 @@ public class Jungle<T> {
         return r;
     }
 
-    public static <S, T> Jungle<T> unfold(Function<S, ? extends CGraphF<T, S>> f, S base) {
-        return new Jungle<>(f, base);
+    public static <T, S> Jungle<T> unfold(Function<S, ? extends CGraphF<T, S>> f, S s) {
+        return new Jungle<>(f, s);
     }
 
     public static <T, S> Jungle<S> unfold(Function<T, ? extends NodeF<S, Cont<Collection<T>>>> f, Collection<T> base) {
         return new Jungle<>(b -> {
-            Collection<NodeF<S, Cont<Collection<T>>>> collection = new HashSet<>();
-            for (T t : b) {
-                collection.add(f.apply(t));
-            }
-            return new CGraphF<>(collection).bind(Function.identity());
+            return new CGraphF<>(() -> {
+                Collection<NodeF<S, Cont<Collection<T>>>> collection = new HashSet<>();
+                for (T t : b) {
+                    collection.add(f.apply(t));
+                }
+                return collection;
+            }).bind(Function.identity());
         }, base);
+    }
+
+    public CGraphF<T, Jungle<T>> unfix() {
+        return cgraph;
     }
 
     public Jungle<T> filter(BiPredicate<T, Jungle<T>> p) {
@@ -78,13 +87,17 @@ public class Jungle<T> {
         return new Jungle<>(cgraph -> cgraph.map(f, jungle -> jungle.cgraph), cgraph);
     }
 
-    public Cont<Collection<T>> successors() {
+    public Jungle<T> modify(BiFunction<T, Jungle<T>, Jungle<T>> g) {
+        return fold(cgraph -> new Jungle<>(cgraph.map(g)));
+    }
+
+    public Cont<Collection<T>> branches() {
         return cgraph.c.map(graph -> {
-            Collection<T> successors = new ArrayList<>(graph.nodes.size());
+            Collection<T> branches = new ArrayList<>(graph.nodes.size());
             for (NodeF<T, Jungle<T>> node : graph.nodes) {
-                successors.add(node.ref);
+                branches.add(node.ref);
             }
-            return successors;
+            return branches;
         });
     }
 
@@ -122,39 +135,55 @@ public class Jungle<T> {
         );
     }
 
-    static class CGraphF<A ,F> {
-        Cont<? extends GraphF<A, F>> c;
-        CGraphF(Cont<? extends GraphF<A, F>> cgraph) {
-            this.c = cgraph;
+    public static <T> Jungle<T> merge(Collection<Jungle<T>> jungles) {
+        Cont<GraphF<T, Jungle<T>>> $ = Cont.of(() -> new GraphF<>());
+        for (Jungle<T> jungle : jungles) {
+            $ = $.bind(a -> jungle.cgraph.c.bind(b -> Cont.of(GraphF.merge(a, b))));
         }
-        CGraphF(GraphF<A, F> graph) {
+        return new Jungle<>(new CGraphF<>($));
+    }
+
+    public static class CGraphF<A ,F> {
+        Cont<GraphF<A, F>> c;
+        public CGraphF(Cont<? extends GraphF<A, F>> cgraph) {
+            this.c = cgraph.map(graph -> (GraphF<A, F>)graph);
+        }
+        public CGraphF(GraphF<A, F> graph) {
             this(Cont.of(() -> graph));
         }
-        CGraphF(CGraphF<A, F> cgraph) {
+        public CGraphF(CGraphF<A, F> cgraph) {
             this.c = cgraph.c;
         }
-        CGraphF() {
+        public CGraphF() {
             this(new GraphF<>());
         }
-        CGraphF(Collection<? extends NodeF<A, F>> nodes) {
-            this(new GraphF<>(nodes));
-        }
-        public CGraphF(Supplier<? extends GraphF<A, F>> graph) {
-            this(Cont.of(graph));
+        public CGraphF(Supplier<? extends Collection<? extends NodeF<A, F>>> nodes) {
+            this(Cont.of(nodes).map(GraphF::new));
         }
         static <A, F> CGraphF<A, F> collect(Supplier<? extends Collection<? extends NodeF<A, F>>> nodes) {
             return new CGraphF<>(Cont.of(nodes).map(GraphF::new));
         }
-        <R, S> CGraphF<R, S> map(Function<A, R> f, Function<F, S> g) {
+        public <R, S> CGraphF<R, S> map(Function<A, R> f, Function<F, S> g) {
             return new CGraphF<>(c.map(graph -> graph.map(f, g)));
         }
-        <G> CGraphF<A, G> map(Function<F, G> g) {
+        public <G> CGraphF<A, G> map(Function<F, G> g) {
             return new CGraphF<>(c.map(graph -> graph.map(g)));
         }
-        <G> CGraphF<A, G> map(BiFunction<A, F, G> g) {
+        public <G> CGraphF<A, G> map(BiFunction<A, F, G> g) {
             return new CGraphF<>(c.map(graph -> graph.map(g)));
         }
-        <G> CGraphF<A, G> bind(Function<F, Cont<G>> f) {
+        public <B, G> CGraphF<B, G> flatmap(BiFunction<A, F, CGraphF<B, G>> f) {
+            return new CGraphF<>(c.bind(graph -> {
+                Cont<GraphF<B, G>> out = Cont.of(() -> new GraphF<>());
+                for (var node : graph.nodes) {
+                    out = out.bind(g -> {
+                        return f.apply(node.ref, node.next).c;
+                    });
+                }
+                return out;
+            }));
+        }
+        public <G> CGraphF<A, G> bind(Function<F, Cont<G>> f) {
             return new CGraphF<A, G>(c.bind(graph -> {
                 Cont<GraphF<A, G>> out = Cont.of(() -> new GraphF<>());
                 for (var node : graph.nodes) {
@@ -176,42 +205,49 @@ public class Jungle<T> {
         }
     }
 
-    static class GraphF<A, F> {
+    public static class GraphF<A, F> {
         Collection<NodeF<A, F>> nodes;
-        GraphF() {
+        public GraphF() {
             this.nodes = new HashSet<>();
         }
-        GraphF(Collection<? extends NodeF<A, F>> nodes) {
+        public GraphF(Collection<? extends NodeF<A, F>> nodes) {
             this.nodes = new HashSet<>(nodes.size());
             for (NodeF<A ,F> node : nodes) {
                 this.nodes.add(node);
             }
         }
-        GraphF(GraphF<A, F> other) {
+        public GraphF(GraphF<A, F> other) {
             this.nodes = new HashSet<>(other.nodes);
         }
-        <R, S> GraphF<R, S> map(Function<A, R> f, Function<F, S> g) {
+        public <R, S> GraphF<R, S> map(Function<A, R> f, Function<F, S> g) {
             Collection<NodeF<R, S>> $ = new HashSet<>();
             for (NodeF<A, F> node : nodes) {
                 $.add(node.map(f, g));
             }
             return new GraphF<>($);
         }
-        <G> GraphF<A, G> map(Function<F, G> g) {
+        public <G> GraphF<A, G> map(Function<F, G> g) {
             Collection<NodeF<A, G>> $ = new HashSet<>();
             for (NodeF<A, F> node : nodes) {
                 $.add(node.map(g));
             }
             return new GraphF<>($);
         }
-        <G> GraphF<A, G> map(BiFunction<A, F, G> g) {
+        public <G> GraphF<A, G> map(BiFunction<A, F, G> g) {
             Collection<NodeF<A, G>> $ = new HashSet<>();
             for (NodeF<A, F> node : nodes) {
                 $.add(node.map(g));
             }
             return new GraphF<>($);
         }
-        GraphF<A, F> filter(BiPredicate<A, F> p) {
+        public <B, G> GraphF<B, G> flatmap(BiFunction<A, F, GraphF<B, G>> g) {
+            Collection<NodeF<B, G>> $ = new HashSet<>();
+            for (NodeF<A, F> node : nodes) {
+                $.addAll(g.apply(node.ref, node.next).nodes);
+            }
+            return new GraphF<>($);
+        }
+        public GraphF<A, F> filter(BiPredicate<A, F> p) {
             Collection<NodeF<A, F>> $ = new HashSet<>();
             for (NodeF<A, F> node : nodes) {
                 if (p.test(node.ref, node.next)) {
@@ -220,14 +256,15 @@ public class Jungle<T> {
             }
             return new GraphF<>($);
         }
-        GraphF<A, F> concat(GraphF<A, F> other) {
-            Collection<NodeF<A, F>> out = new HashSet<>(nodes);
-            out.addAll(other.nodes);
+        public static <A, F> GraphF<A, F> merge(GraphF<A, F> a, GraphF<A, F> b) {
+            Collection<NodeF<A, F>> out = new HashSet<>(a.nodes.size() + b.nodes.size());
+            out.addAll(a.nodes);
+            out.addAll(b.nodes);
             return new GraphF<>(out);
         }
     }
 
-    static class NodeF<A, F> {
+    public static class NodeF<A, F> {
         static int count = 0;
         int seq;
         A ref;
@@ -237,7 +274,7 @@ public class Jungle<T> {
             this.ref = ref;
             this.next = next;
         }
-        NodeF(int seq, A ref, F next) {
+        public NodeF(int seq, A ref, F next) {
             this.seq = seq;
             this.ref = ref;
             this.next = next;

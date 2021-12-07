@@ -12,6 +12,10 @@ public interface Cont<T> {
 
     App app(Callback<T> k);
 
+    static <T> Cont<T> of(T t) {
+        return new Pure<>(() -> t);
+    }
+
     static <T> Cont<T> of(Supplier<T> supplier) {
         return new Pure<>(supplier);
     }
