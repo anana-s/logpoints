@@ -8,12 +8,11 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.Stack;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
-import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 public class Jungle<T> {
 
@@ -23,23 +22,23 @@ public class Jungle<T> {
         this.cgraph = dnodes;
     }
 
-    Jungle(Jungle<T> other) {
+    public Jungle(Jungle<T> other) {
         this(other.cgraph);
     }
 
-    Jungle() {
+    public Jungle() {
         this(new CGraphF<>());
     }
 
-    public <S> Jungle(Function<S, CGraphF<T, S>> f, S s) {
+    <S> Jungle(Function<S, ? extends CGraphF<T, S>> f, S s) {
         this.cgraph = f.apply(s).map(s$ -> new Jungle<>(f, s$));
     }
 
-    public <R> R fold(Function<CGraphF<T, R>, R> f) {
+    public <R> R fold(Function<CGraphF<T, R>, ? extends R> f) {
         return fold(f, new HashSet<>(), new HashMap<>());
     }
 
-    private <R> R fold(Function<CGraphF<T, R>, R> f, Set<Jungle<T>> open, Map<Jungle<T>, R> close) {
+    private <R> R fold(Function<CGraphF<T, R>, ? extends R> f, Set<Jungle<T>> open, Map<Jungle<T>, R> close) {
         if (close.containsKey(this)) {
             return close.get(this);
         }
@@ -57,8 +56,18 @@ public class Jungle<T> {
         return r;
     }
 
-    public static <S, T> Jungle<S> unfold(Function<T, CGraphF<S, T>> f, T t) {
-        return new Jungle<>(f, t);
+    public static <S, T> Jungle<T> unfold(Function<S, ? extends CGraphF<T, S>> f, S base) {
+        return new Jungle<>(f, base);
+    }
+
+    public static <T, S> Jungle<S> unfold(Function<T, ? extends NodeF<S, Cont<Collection<T>>>> f, Collection<T> base) {
+        return new Jungle<>(b -> {
+            Collection<NodeF<S, Cont<Collection<T>>>> collection = new HashSet<>();
+            for (T t : b) {
+                collection.add(f.apply(t));
+            }
+            return new CGraphF<>(collection).bind(Function.identity());
+        }, base);
     }
 
     public Jungle<T> filter(BiPredicate<T, Jungle<T>> p) {
@@ -66,10 +75,10 @@ public class Jungle<T> {
     }
 
     public <R> Jungle<R> map(Function<T, R> f) {
-        return unfold(cgraph -> cgraph.map(f, jungle -> jungle.cgraph), cgraph);
+        return new Jungle<>(cgraph -> cgraph.map(f, jungle -> jungle.cgraph), cgraph);
     }
 
-    public C<Collection<T>> successors() {
+    public Cont<Collection<T>> successors() {
         return cgraph.c.map(graph -> {
             Collection<T> successors = new ArrayList<>(graph.nodes.size());
             for (NodeF<T, Jungle<T>> node : graph.nodes) {
@@ -79,36 +88,62 @@ public class Jungle<T> {
         });
     }
 
-    public C<Void> traverse(T parent, BiConsumer<T, Collection<T>> visitor) {
+    public Cont<Void> traverse(BiConsumer<T, Collection<T>> visitor) {
+        Set<NodeF<T, Jungle<T>>> visited = new HashSet<>();
         return cgraph.c.bind(
-            graph -> C.of(graph.nodes).bind(
-                nodes -> {
-                    Collection<T> collected = new ArrayList<>(nodes.size());
-                    C<Void> traversal = C.of(null);
-                    for (NodeF<T, Jungle<T>> node : nodes) {
-                        collected.add(node.ref);
-                        traversal = traversal.bind(v -> node.next.traverse(node.ref, visitor));
+            graph -> {
+                Cont<Void> traversal = Cont.of(() -> null);
+                for (NodeF<T, Jungle<T>> node : graph.nodes) {
+                    if (!visited.contains(node)) {
+                        visited.add(node);
+                        traversal = traversal.bind(v -> node.next.traverse(node.ref, visitor, visited));
                     }
-                    visitor.accept(parent, collected);
-                    return traversal;
                 }
-            )
+                return traversal;
+            }
+        );
+    }
+
+    private Cont<Void> traverse(T parent, BiConsumer<T, Collection<T>> visitor, Set<NodeF<T, Jungle<T>>> visited) {
+        return cgraph.c.bind(
+            graph -> {
+                Collection<T> collected = new ArrayList<>(graph.nodes.size());
+                Cont<Void> traversal = Cont.of(() -> null);
+                for (NodeF<T, Jungle<T>> node : graph.nodes) {
+                    if (!visited.contains(node)) {
+                        visited.add(node);
+                        traversal = traversal.bind(v -> node.next.traverse(node.ref, visitor, visited));
+                    }
+                    collected.add(node.ref);
+                }
+                visitor.accept(parent, collected);
+                return traversal;
+            }
         );
     }
 
     static class CGraphF<A ,F> {
-        C<GraphF<A, F>> c;
-        CGraphF(C<GraphF<A, F>> cgraph) {
+        Cont<? extends GraphF<A, F>> c;
+        CGraphF(Cont<? extends GraphF<A, F>> cgraph) {
             this.c = cgraph;
         }
         CGraphF(GraphF<A, F> graph) {
-            this(C.of(graph));
+            this(Cont.of(() -> graph));
+        }
+        CGraphF(CGraphF<A, F> cgraph) {
+            this.c = cgraph.c;
         }
         CGraphF() {
             this(new GraphF<>());
         }
-        CGraphF(Collection<NodeF<A, F>> nodes) {
+        CGraphF(Collection<? extends NodeF<A, F>> nodes) {
             this(new GraphF<>(nodes));
+        }
+        public CGraphF(Supplier<? extends GraphF<A, F>> graph) {
+            this(Cont.of(graph));
+        }
+        static <A, F> CGraphF<A, F> collect(Supplier<? extends Collection<? extends NodeF<A, F>>> nodes) {
+            return new CGraphF<>(Cont.of(nodes).map(GraphF::new));
         }
         <R, S> CGraphF<R, S> map(Function<A, R> f, Function<F, S> g) {
             return new CGraphF<>(c.map(graph -> graph.map(f, g)));
@@ -118,6 +153,20 @@ public class Jungle<T> {
         }
         <G> CGraphF<A, G> map(BiFunction<A, F, G> g) {
             return new CGraphF<>(c.map(graph -> graph.map(g)));
+        }
+        <G> CGraphF<A, G> bind(Function<F, Cont<G>> f) {
+            return new CGraphF<A, G>(c.bind(graph -> {
+                Cont<GraphF<A, G>> out = Cont.of(() -> new GraphF<>());
+                for (var node : graph.nodes) {
+                    out = out.bind(g -> {
+                        return f.apply(node.next).map(next -> {
+                            g.nodes.add(new NodeF<>(node.seq, node.ref, next));
+                            return g;
+                        });
+                    });
+                }
+                return out;
+            }));
         }
         CGraphF<A, F> filter(BiPredicate<A, F> p) {
             return new CGraphF<>(c.map(graph -> graph.filter(p)));
@@ -130,10 +179,16 @@ public class Jungle<T> {
     static class GraphF<A, F> {
         Collection<NodeF<A, F>> nodes;
         GraphF() {
-            this.nodes = Collections.emptySet();
+            this.nodes = new HashSet<>();
         }
-        GraphF(Collection<NodeF<A, F>> nodes) {
-            this.nodes = nodes;
+        GraphF(Collection<? extends NodeF<A, F>> nodes) {
+            this.nodes = new HashSet<>(nodes.size());
+            for (NodeF<A ,F> node : nodes) {
+                this.nodes.add(node);
+            }
+        }
+        GraphF(GraphF<A, F> other) {
+            this.nodes = new HashSet<>(other.nodes);
         }
         <R, S> GraphF<R, S> map(Function<A, R> f, Function<F, S> g) {
             Collection<NodeF<R, S>> $ = new HashSet<>();
@@ -165,23 +220,41 @@ public class Jungle<T> {
             }
             return new GraphF<>($);
         }
+        GraphF<A, F> concat(GraphF<A, F> other) {
+            Collection<NodeF<A, F>> out = new HashSet<>(nodes);
+            out.addAll(other.nodes);
+            return new GraphF<>(out);
+        }
     }
 
     static class NodeF<A, F> {
+        static int count = 0;
+        int seq;
         A ref;
         F next;
-        NodeF(A ref, F next) {
+        public NodeF(A ref, F next) {
+            this.seq = count++;
             this.ref = ref;
             this.next = next;
         }
-        <R, S> NodeF<R, S> map(Function<A, R> f, Function<F, S> g) {
-            return new NodeF<>(f.apply(ref), g.apply(next));
+        NodeF(int seq, A ref, F next) {
+            this.seq = seq;
+            this.ref = ref;
+            this.next = next;
         }
-        <G> NodeF<A, G> map(Function<F, G> g) {
-            return new NodeF<>(ref, g.apply(next));
+        public NodeF(NodeF<A, F> node) {
+            this.seq = node.seq;
+            this.ref = node.ref;
+            this.next = node.next;
         }
-        <G> NodeF<A, G> map(BiFunction<A, F, G> g) {
-            return new NodeF<>(ref, g.apply(ref, next));
+        public <R, S> NodeF<R, S> map(Function<A, R> f, Function<F, S> g) {
+            return new NodeF<>(seq, f.apply(ref), g.apply(next));
+        }
+        public <G> NodeF<A, G> map(Function<F, G> g) {
+            return new NodeF<>(seq, ref, g.apply(next));
+        }
+        public <G> NodeF<A, G> map(BiFunction<A, F, G> g) {
+            return new NodeF<>(seq, ref, g.apply(ref, next));
         }
         @Override
         public boolean equals(Object obj) {
@@ -192,11 +265,11 @@ public class Jungle<T> {
                 return false;
             }
             NodeF<?, ?> other = (NodeF<?, ?>)obj;
-            return ref.equals(other.ref) && next.equals(other.next);
+            return ref.equals(other.ref) && seq == other.seq;
         }
         @Override
         public int hashCode() {
-            return Objects.hash(ref, next);
+            return Objects.hash(ref, seq);
         }
     }
 }

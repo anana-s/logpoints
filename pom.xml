@@ -9,7 +9,7 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <main.class>anana5.sense.graph.Main</main.class>
+        <main.class>anana5.sense.logpoints.Main</main.class>
         <java.version>11</java.version>
         <junit.jupiter.version>5.4.2</junit.jupiter.version>
         <maven.compiler.plugin.version>3.8.0</maven.compiler.plugin.version>
@@ -53,7 +53,7 @@
               <configuration>
                 <archive>
                   <manifest>
-                    <mainClass>anana5.sense.graph.Main</mainClass>
+                    <mainClass>${main.class}</mainClass>
                   </manifest>
                 </archive>
                 <descriptorRefs>

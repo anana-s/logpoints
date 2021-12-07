@@ -1,8 +1,19 @@
-package anana5.sense.graph;
+package anana5.sense.logpoints;
+
+import java.io.FileNotFoundException;
+import java.io.PrintStream;
 
 import org.apache.commons.text.StringEscapeUtils;
 
-public class GraphVizPrinter extends GraphPrinter {
+public class GraphVizPrinter extends GraphPrinter implements AutoCloseable {
+
+    PrintStream out;
+
+    GraphVizPrinter(PrintStream out) throws FileNotFoundException {
+        this.out = out;
+        this.out.println("digraph {");
+    }
+    
     @Override
     public String discover(Object o) {
         if (discovered.containsKey(o)) {
@@ -19,6 +30,11 @@ public class GraphVizPrinter extends GraphPrinter {
         s.append(discover(from));
         s.append(" -> ");
         s.append(discover(to));
-        System.out.println(s);
+        out.println(s);
+    }
+
+    @Override
+    public void close() {
+        out.println("}");
     }
 }
