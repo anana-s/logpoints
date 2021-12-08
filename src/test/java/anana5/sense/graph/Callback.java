@@ -5,24 +5,21 @@ import java.util.List;
 import java.util.function.Consumer;
 
 public class Callback {
-    @FunctionalInterface
-    interface ICallBack {
-        public void accept(String s);
-    }
     
-    List<Consumer<String>> callbacks;
+    List<Consumer<Object>> callbacks;
 
     public Callback() {
         callbacks = new ArrayList<>();
     }
 
-    public void add(Consumer<String> callback) {
+    public void add(Consumer<Object> callback) {
         System.out.println("Added Callback: " + callback.toString());
         callbacks.add(callback);
     }
 
     public void run() {
-        for (Consumer<String> callback : callbacks) {
+        for (Consumer<Object> callback : callbacks) {
+            System.out.println("Calling: " + callback.toString());
             callback.accept("sweet pineapple");
         }
     }
@@ -35,12 +32,18 @@ public class Callback {
         say(phrase);
     }
 
+    static class Greeter implements Consumer<Object> {
+        @Override
+        public void accept(Object s) {
+            System.out.println(s);
+        }
+    }
+
     public static void main(String[] args) {
         System.out.println("Callbacks started");
         Callback o = new Callback();
         o.add(phrase -> System.out.println(phrase));
-        o.add(phrase -> say(phrase));
-        o.add(phrase -> indirect(phrase));
+        o.add(new Greeter());
         o.run();
     }
 }

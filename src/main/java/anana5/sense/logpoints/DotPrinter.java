@@ -1,31 +1,31 @@
 package anana5.sense.logpoints;
 
-import java.io.FileNotFoundException;
 import java.io.PrintStream;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.apache.commons.text.StringEscapeUtils;
 
-public class GraphVizPrinter extends GraphPrinter implements AutoCloseable {
-
+public class DotPrinter<T> implements AutoCloseable {
+    Map<T, String> discovered;
     PrintStream out;
 
-    GraphVizPrinter(PrintStream out) throws FileNotFoundException {
+    DotPrinter(PrintStream out) {
+        this.discovered = new HashMap<>();
         this.out = out;
         this.out.println("digraph {");
     }
     
-    @Override
-    public String discover(Object o) {
+    public <O extends T> String discover(O o) {
         if (discovered.containsKey(o)) {
             return discovered.get(o);
         }
-        String repr = "\"" + StringEscapeUtils.escapeJava(o.toString() + " @ " + o.hashCode()) + "\"";
+        String repr = "\"" + StringEscapeUtils.escapeJava(o.toString() + " at " + Integer.toHexString(o.hashCode())) + "\"";
         discovered.put(o, repr);
         return repr;
     }
 
-    @Override
-    public void print(Object from, Object to) {
+    public <O extends T> void print(O from, O to) {
         StringBuilder s = new StringBuilder();
         s.append(discover(from));
         s.append(" -> ");
