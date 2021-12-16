@@ -4,11 +4,16 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class Example {
     @FunctionalInterface
     interface ICallBack {
         public void accept(String s) throws IOException;
     }
+
+    static Logger logger = LoggerFactory.getLogger(Example.class);
     
     List<ICallBack> callbacks;
 
@@ -17,28 +22,28 @@ public class Example {
     }
 
     public void add(ICallBack callback) {
-        System.out.println("Added Callback: " + callback.toString());
+        logger.info("Added Callback: " + callback.toString());
         callbacks.add(callback);
     }
 
     public void run() {
-        System.out.println("Started");
+        logger.info("Started");
         for (ICallBack callback : callbacks) {
             try {
                 callback.accept("sweet pineapple");
             } catch (IOException e) {
-                System.out.println("Io Error");
+                logger.info("Io Error");
             }
         }
-        System.out.println("Stopped");
+        logger.info("Stopped");
     }
 
     public static void main(String[] args) {
         Example o = new Example();
-        o.add(phrase -> System.out.println(phrase));
-        System.out.println("Created");
+        o.add(phrase -> logger.info(phrase));
+        logger.info("Created");
         if (args.length != 0) {
-            System.out.println("Wrong number of args");
+            logger.info("Wrong number of args");
             System.exit(1);
         } else {
             o.run();

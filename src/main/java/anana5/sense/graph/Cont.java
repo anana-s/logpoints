@@ -155,18 +155,7 @@ public interface Cont<T> {
         }
     }
 
-
-    /**
-     * run computation
-     */
-    static Map<Cont<?>, Object> cache = new WeakHashMap<>();
-    
-    @SuppressWarnings({ "unchecked" })
     default T run() {
-        return (T)cache.computeIfAbsent(this, Cont::force);
-    }
-
-    default T force() {
         var result = new Object() { T value; };
         App a = this.app(Callback.of(t -> result.value = t));
         while (a != null) {

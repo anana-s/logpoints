@@ -7,14 +7,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
-import anana5.sense.graph.Rain;
+import anana5.sense.graph.Rainfall;
 import soot.SootMethod;
 import soot.Unit;
 import soot.jimple.Stmt;
 import soot.jimple.toolkits.callgraph.CallGraph;
 import soot.toolkits.graph.ExceptionalUnitGraph;
 
-public class ExecutionFlow extends Rain<Unit> {
+public class ExecutionFlow extends Rainfall<Stmt> {
 
     private static boolean skip(SootMethod m) {
         return m.isPhantom() 
@@ -27,12 +27,12 @@ public class ExecutionFlow extends Rain<Unit> {
         super(build(callgraph, entrypoints));
     }
 
-    static Rain<Unit> build(CallGraph cg, Collection<SootMethod> es) {
+    static Rainfall<Stmt> build(CallGraph cg, Collection<SootMethod> es) {
         Builder builder = new Builder(cg);
-        return unfold(builder, builder.roots(es));
+        return unfold(builder, builder.roots(es)).map(Stmt.class::cast);
     }
 
-    static class Builder implements Function<Builder.Reader, Droplets<Unit, Builder.Reader>> {
+    static class Builder implements Function<Builder.Reader, Rain<Unit, Builder.Reader>> {
         CallGraph cg;
 
         Builder(CallGraph cg) {
@@ -40,7 +40,7 @@ public class ExecutionFlow extends Rain<Unit> {
         }
 
         @Override
-        public Droplets<Unit, Reader> apply(Reader reader) {
+        public Rain<Unit, Reader> apply(Reader reader) {
             return reader.succs();
         }
 
@@ -55,7 +55,7 @@ public class ExecutionFlow extends Rain<Unit> {
         }
 
         interface Reader {
-            Droplets<Unit, Reader> succs();
+            Rain<Unit, Reader> succs();
         }
 
         class MultiReader extends ArrayList<Reader> implements Reader {
@@ -69,8 +69,8 @@ public class ExecutionFlow extends Rain<Unit> {
                 super(readers);
             } 
             @Override
-            public Droplets<Unit, Reader> succs() {
-                Droplets<Unit, Reader> droplets = new Droplets<>();
+            public Rain<Unit, Reader> succs() {
+                Rain<Unit, Reader> droplets = new Rain<>();
                 for (Reader reader : this) {
                     droplets.addAll(reader.succs());
                 }
@@ -80,7 +80,7 @@ public class ExecutionFlow extends Rain<Unit> {
 
         class Context {
             Map<Unit, Collection<Context>> seen;
-            Map<Unit, Drop<Unit, Reader>> visited;
+            Map<Unit, Droplet<Unit, Reader>> visited;
             Unit invoker;
             ExceptionalUnitGraph cfg;
             Reader ret;
@@ -162,11 +162,11 @@ public class ExecutionFlow extends Rain<Unit> {
                 }
 
                 @Override
-                public Droplets<Unit, Reader> succs() {
-                    Droplets<Unit, Reader> droplets = new Droplets<>();
+                public Rain<Unit, Reader> succs() {
+                    Rain<Unit, Reader> droplets = new Rain<>();
                     for (Unit unit : units) {
                         droplets.add(visited.computeIfAbsent(unit, $ -> {
-                            return new Drop<>(unit, of(unit));
+                            return new Droplet<>(unit, of(unit));
                         }));
                     }
                     return droplets;
