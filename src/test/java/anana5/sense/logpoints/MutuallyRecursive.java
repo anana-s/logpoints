@@ -1,8 +1,9 @@
-package anana5.sense.graph;
+package anana5.sense.logpoints;
 
-public class IndirectInvoke {
+public class MutuallyRecursive {
     public static void greet() {
         System.out.println("sweet pineapple");
+        indirect();
     }
 
     public static void indirect() {
@@ -10,6 +11,7 @@ public class IndirectInvoke {
     }
 
     public static void main(String[] args) {
+        System.out.println("Started");
         indirect();
     }
 }

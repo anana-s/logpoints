@@ -12,5 +12,3 @@ buildNumber.properties
 .classpath
 .project
 .settings
-.vscode
-.soot

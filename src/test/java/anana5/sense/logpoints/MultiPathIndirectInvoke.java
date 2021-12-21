@@ -1,4 +1,4 @@
-package anana5.sense.graph;
+package anana5.sense.logpoints;
 
 public class MultiPathIndirectInvoke {
     public static void greet() {

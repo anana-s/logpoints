@@ -1,4 +1,4 @@
-package anana5.sense.graph;
+package anana5.sense.logpoints;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -45,5 +45,6 @@ public class Callback {
         o.add(phrase -> System.out.println(phrase));
         o.add(new Greeter());
         o.run();
+        System.out.println("Done");
     }
 }

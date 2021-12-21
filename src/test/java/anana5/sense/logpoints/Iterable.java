@@ -1,4 +1,4 @@
-package anana5.sense.graph;
+package anana5.sense.logpoints;
 
 import java.util.Arrays;
 
@@ -7,5 +7,6 @@ public class Iterable {
         for (String arg : Arrays.asList(args)) {
             System.out.println(arg);
         }
+        System.out.println("sweet pineapple");
     }
 }

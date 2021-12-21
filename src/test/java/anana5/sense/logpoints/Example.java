@@ -1,4 +1,4 @@
-package anana5.sense.graph;
+package anana5.sense.logpoints;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -22,31 +22,40 @@ public class Example {
     }
 
     public void add(ICallBack callback) {
-        logger.info("Added Callback: " + callback.toString());
+        logger.debug("added callback: {}", callback.toString());
         callbacks.add(callback);
     }
 
-    public void run() {
-        logger.info("Started");
+    public void run() throws IOException {
+        logger.debug("started");
         for (ICallBack callback : callbacks) {
             try {
                 callback.accept("sweet pineapple");
             } catch (IOException e) {
-                logger.info("Io Error");
+                logger.debug("encountered io error");
+                throw e;
             }
         }
-        logger.info("Stopped");
+        logger.debug("stopped");
     }
 
     public static void main(String[] args) {
         Example o = new Example();
-        o.add(phrase -> logger.info(phrase));
-        logger.info("Created");
+        o.add(phrase -> logger.info("call {}", phrase));
+        logger.info("initialized");
         if (args.length != 0) {
-            logger.info("Wrong number of args");
+            logger.error("wrong number of args");
             System.exit(1);
+            return;
         } else {
-            o.run();
+            try {
+                o.run();
+            } catch (IOException e) {
+                logger.error("cannot recover from io error");
+                System.exit(2);
+                return;
+            }
         }
+        logger.info("successfully ran all");
     }
 }

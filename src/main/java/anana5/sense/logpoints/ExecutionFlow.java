@@ -7,6 +7,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import anana5.sense.graph.Promise;
 import anana5.sense.graph.Rainfall;
 import soot.SootMethod;
 import soot.Unit;
@@ -15,6 +19,8 @@ import soot.jimple.toolkits.callgraph.CallGraph;
 import soot.toolkits.graph.ExceptionalUnitGraph;
 
 public class ExecutionFlow extends Rainfall<Stmt> {
+
+    static Logger logger = LoggerFactory.getLogger(ExecutionFlow.class);
 
     private static boolean skip(SootMethod m) {
         return m.isPhantom() 
@@ -27,7 +33,7 @@ public class ExecutionFlow extends Rainfall<Stmt> {
         super(build(callgraph, entrypoints));
     }
 
-    static Rainfall<Stmt> build(CallGraph cg, Collection<SootMethod> es) {
+    private static Rainfall<Stmt> build(CallGraph cg, Collection<SootMethod> es) {
         Builder builder = new Builder(cg);
         return unfold(builder, builder.roots(es)).map(Stmt.class::cast);
     }
@@ -45,9 +51,10 @@ public class ExecutionFlow extends Rainfall<Stmt> {
         }
 
         Reader roots(Collection<SootMethod> methods) {
-            MultiReader readers = new MultiReader();
+            MultiReader readers = new MultiReader(methods.size());
             for (SootMethod method : methods) {
                 if (!skip(method)) {
+                    logger.debug("Building {}.", method);
                     readers.add(new Context(null, method).root());
                 }
             }
@@ -68,13 +75,14 @@ public class ExecutionFlow extends Rainfall<Stmt> {
             MultiReader(Collection<? extends Reader> readers) {
                 super(readers);
             } 
+            @SuppressWarnings("unchecked")
             @Override
             public Rain<Unit, Reader> succs() {
-                Rain<Unit, Reader> droplets = new Rain<>();
+                Collection<Rain<Unit, Reader>> rains = new ArrayList<>(size());
                 for (Reader reader : this) {
-                    droplets.addAll(reader.succs());
+                    rains.add(reader.succs());
                 }
-                return droplets;
+                return Rain.merge(rains.toArray(new Rain[rains.size()]));
             }
         }
 
@@ -163,13 +171,13 @@ public class ExecutionFlow extends Rainfall<Stmt> {
 
                 @Override
                 public Rain<Unit, Reader> succs() {
-                    Rain<Unit, Reader> droplets = new Rain<>();
+                    Puddle<Unit, Reader> puddle = new Puddle<>();
                     for (Unit unit : units) {
-                        droplets.add(visited.computeIfAbsent(unit, $ -> {
+                        puddle.add(visited.computeIfAbsent(unit, $ -> {
                             return new Droplet<>(unit, of(unit));
                         }));
                     }
-                    return droplets;
+                    return new Rain<>(new Promise<Puddle<Unit, Reader>>(() -> puddle));
                 }
             }
         }

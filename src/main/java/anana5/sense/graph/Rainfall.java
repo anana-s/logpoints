@@ -3,7 +3,6 @@ package anana5.sense.graph;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -12,29 +11,34 @@ import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 public class Rainfall<T> {
 
-    Rain<T, Rainfall<T>> rain;
+    final Rain<T, Rainfall<T>> rain;
     
-    public static <T> Rainfall<T> from(Supplier<? extends Collection<? extends Droplet<T, Rainfall<T>>>> supplier) {
-        return new Rainfall<>(Rain.from(supplier));
+    @SafeVarargs
+    public Rainfall(Supplier<Droplet<T, Rainfall<T>>>... suppliers) {
+        this.rain = new Rain<>(suppliers);
     }
 
-    public Rainfall(Rain<T, Rainfall<T>> dnodes) {
-        this.rain = dnodes;
+    public Rainfall(Rain<T, Rainfall<T>> rain) {
+        this.rain = rain;
     }
 
     public Rainfall(Rainfall<T> other) {
-        this(other.rain);
+        this.rain = other.rain;
     }
 
-    public Rainfall() {
-        this(new Rain<>());
+    @SafeVarargs
+    public static <T> Rainfall<T> of(Supplier<Droplet<T, Rainfall<T>>>... suppliers) {
+        return new Rainfall<>(suppliers);
+    }
+
+    public static <T> Rainfall<T> of(Rain<T, Rainfall<T>> rain) {
+        return new Rainfall<>(rain);
     }
 
     public Rain<T, Rainfall<T>> unfix() {
@@ -45,7 +49,7 @@ public class Rainfall<T> {
         return cls.cast(rain);
     } 
 
-    public Cont<Collection<Droplet<T, Rainfall<T>>.SnowFlake>> collect() {
+    public Promise<Collection<Droplet<T, Rainfall<T>>.SnowFlake>> collect() {
         return rain.collect();
     }
 
@@ -62,24 +66,19 @@ public class Rainfall<T> {
     }
 
     public Rainfall<T> filter(Predicate<Droplet<T, Rainfall<T>>.SnowFlake> p) {
-        HashMap<Droplet<T, Rainfall<T>>, Puddle<T, Rainfall<T>>> cache = new HashMap<>();
+        Set<Droplet<T, Rainfall<T>>> seen = new HashSet<>();
         return fold(rain -> new Rainfall<>(rain.flatmap(droplet -> {
-            if (cache.containsKey(droplet)) {
-                Puddle<T, Rainfall<T>> puddle = cache.get(droplet);
-                if (puddle == null) {
-                    return Rain.of();
-                }
-                return Rain.of(puddle);
+            if (seen.contains(droplet)) {
+                return new Rain<>();
             }
 
-            cache.put(droplet, null);
-
             if (p.test(droplet.freeze())) {
-                Puddle<T, Rainfall<T>> out = Puddle.of(droplet);
-                cache.put(droplet, out);
-                return Rain.of(out);
+                Rain<T, Rainfall<T>> out = new Rain<>(() -> droplet);
+                return out;
             } else {
-                return droplet.let.rain.then(puddle -> cache.put(droplet, puddle));
+                seen.add(droplet);
+                droplet.let.rain.promise = droplet.let.rain.promise.then($ -> seen.remove(droplet));
+                return droplet.let.rain;
             }
         })));
     }
@@ -88,40 +87,36 @@ public class Rainfall<T> {
         return unfold(this, rainfall -> rainfall.rain.map(droplet -> droplet.map(f)));
     }
 
-    public Cont<Void> traverse(BiConsumer<Droplet<T, Rainfall<T>>.SnowFlake, Collection<Droplet<T, Rainfall<T>>.SnowFlake>> visitor) {
+    public Promise<Void> traverse(BiConsumer<Droplet<T, Rainfall<T>>.SnowFlake, Collection<Droplet<T, Rainfall<T>>.SnowFlake>> visitor) {
         return traverse(null, visitor, new HashSet<>());
     }
 
-    private Cont<Void> traverse(Droplet<T, Rainfall<T>> parent, BiConsumer<Droplet<T, Rainfall<T>>.SnowFlake, Collection<Droplet<T, Rainfall<T>>.SnowFlake>> visitor, Set<Droplet<T, Rainfall<T>>> visited) {
-        return rain.c.bind(
-            puddle -> {
-                Cont<Void> traversal = Cont.of(() -> null);
-                for (Droplet<T, Rainfall<T>> node : puddle.droplets) {
-                    if (!visited.contains(node)) {
-                        visited.add(node);
-                        traversal = traversal.bind(v -> node.let.traverse(node, visitor, visited));
-                    }
+    private Promise<Void> traverse(Droplet<T, Rainfall<T>> parent, BiConsumer<Droplet<T, Rainfall<T>>.SnowFlake, Collection<Droplet<T, Rainfall<T>>.SnowFlake>> visitor, Set<Droplet<T, Rainfall<T>>> visited) {
+        return rain.promise.bind(puddle -> {
+            Promise<Void> traversal = new Promise<>(() -> null);
+            for (Droplet<T, Rainfall<T>> node : puddle) {
+                if (!visited.contains(node)) {
+                    visited.add(node);
+                    traversal = traversal.bind(v -> node.let.traverse(node, visitor, visited));
                 }
-                if (parent != null) {
-                    visitor.accept(parent.freeze(), puddle.collect());
-                } else {
-                    visitor.accept(null, puddle.collect());
-                }
-                return traversal;
             }
-        );
+            if (parent != null) {
+                visitor.accept(parent.freeze(), puddle.collect());
+            } else {
+                visitor.accept(null, puddle.collect());
+            }
+            return traversal;
+        });
     }
 
-    public static <T> Rainfall<T> merge(Collection<Rainfall<T>> jungles) {
-        Cont<Puddle<T, Rainfall<T>>> $ = Cont.of(() -> new Puddle<>());
-        for (Rainfall<T> jungle : jungles) {
-            $ = $.bind(a -> jungle.rain.c.bind(b -> Cont.of(Puddle.merge(a, b))));
+    @SafeVarargs
+    @SuppressWarnings("unchecked")
+    public static <T> Rainfall<T> merge(Rainfall<T>... rainfalls) {
+        ArrayList<Rain<T, Rainfall<T>>> rains = new ArrayList<>(); 
+        for (Rainfall<T> rainfall : rainfalls) {
+            rains.add(rainfall.rain);
         }
-        return new Rainfall<>(new Rain<>($));
-    }
-
-    public Rainfall<T> then(Consumer<Puddle<T, Rainfall<T>>> f) {
-        return new Rainfall<>(rain.then(f));
+        return Rainfall.of(Rain.merge(rains.toArray(new Rain[rains.size()])));
     }
 
     @Override
@@ -142,47 +137,43 @@ public class Rainfall<T> {
     }
 
     public static class Rain<A ,F> {
-        Cont<Puddle<A, F>> c;
-        private Rain(Cont<? extends Puddle<A, F>> cgraph) {
-            this.c = cgraph.map(graph -> (Puddle<A, F>)graph);
-        }
-        public Rain(Rain<A, F> cgraph) {
-            this.c = cgraph.c;
-        }
-        public Rain(Puddle<A, F> graph) {
-            this(Cont.of(() -> graph));
-        }
-        public Rain(Collection<? extends Droplet<A, F>> nodes) {
-            this(new Puddle<>(nodes));
+        static int count = 0;
+        final int seq = 0;
+        Promise<Puddle<A, F>> promise;
+        public Rain(Promise<Puddle<A, F>> promise) {
+            this(count++, promise);
         }
         @SafeVarargs
-        public Rain(Droplet<A, F>... droplets) {
-            this(Arrays.asList(droplets));
+        public Rain(Supplier<Droplet<A, F>>... suppliers) {
+            this(count++, suppliers);
         }
-        public Rain() {
-            this(new Puddle<>());
+        public Rain(int seq, Promise<Puddle<A, F>> promise) {
+            this.promise = promise;
+        }
+        public Rain(int seq, Rain<A, F> rain) {
+            this.promise = rain.promise;
         }
         @SafeVarargs
-        static <A, F> Rain<A, F> of (Droplet<A, F>... droplets) {
-            return new Rain<>(droplets);
+        public Rain(int seq, Supplier<Droplet<A, F>>... suppliers) {
+            this.promise = new Promise<>(() -> new Puddle<>());
+            for (Supplier<Droplet<A, F>> supplier : suppliers) {
+                this.promise = promise.map(puddle -> {
+                    puddle.add(supplier.get());
+                    return puddle;
+                });
+            }
         }
-        static <A, F> Rain<A, F> of (Puddle<A, F> puddle) {
-            return new Rain<>(puddle);
-        }
-        static <A, F> Rain<A, F> from(Supplier<? extends Collection<? extends Droplet<A, F>>> nodes) {
-            return new Rain<>(Cont.of(nodes).map(Puddle::new));
-        }
-        public Cont<Collection<Droplet<A,F>.SnowFlake>> collect() {
-            return c.map(Puddle::collect);
+        public Promise<Collection<Droplet<A,F>.SnowFlake>> collect() {
+            return promise.map(Puddle::collect);
         }
         public <B, G> Rain<B, G> map(Function<Droplet<A, F>, Droplet<B, G>> g) {
-            return new Rain<>(c.map(graph -> graph.map(g)));
+            return new Rain<>(seq, promise.map(graph -> graph.map(g)));
         }
         public <B, G> Rain<B, G> flatmap(Function<Droplet<A, F>, Rain<B, G>> f) {
-            return new Rain<>(c.bind(graph -> {
-                Cont<Puddle<B, G>> out = Cont.of(() -> new Puddle<>());
-                for (var node : graph.droplets) {
-                    out = out.bind(a -> f.apply(node).c.map(b -> {
+            return new Rain<>(seq, promise.bind(puddle -> {
+                Promise<Puddle<B, G>> out = new Promise<>(() -> new Puddle<>());
+                for (var node : puddle) {
+                    out = out.bind(a -> f.apply(node).promise.map(b -> {
                         a.addAll(b);
                         return a;
                     }));
@@ -190,49 +181,26 @@ public class Rainfall<T> {
                 return out;
             }));
         }
-        public <T> Cont<T> bind(Function<Droplet<A, F>, Cont<T>> f) {
-            return c.bind(graph -> {
-                Cont<T> out = Cont.of(() -> null);
-                for (var node : graph.droplets) {
-                    out = out.bind(g -> {
-                        return f.apply(node);
-                    });
-                }
-                return out;
-            });
-        }
-        public <N extends Droplet<A, F>> void add(N n) {
-            add(Cont.of(n));
-        }
-        public <N extends Droplet<A, F>> void add(Supplier<N> n) {
-            add(Cont.of(n));
-        }
-        public <N extends Droplet<A, F>> void add(Cont<N> node) {
-            c = c.bind(graph -> node.bind(n -> {
-                graph.add(n);
-                return Cont.of(graph);
-            }));
-        }
+
         public Rain<A, F> filter(BiPredicate<A, F> p) {
-            return new Rain<>(c.map(graph -> graph.filter(p)));
-        }
-        public void addAll(Rain<A, F> droplets) {
-            c = c.bind(graph -> droplets.c.bind(d -> {
-                graph.addAll(d);
-                return Cont.of(graph);
-            }));
+            return new Rain<>(seq, promise.map(graph -> graph.filter(p)));
         }
 
-        public Rain<A, F> then(Consumer<Puddle<A, F>> f) {
-            return new Rain<>(c.map(puddle -> {
-                f.accept(puddle);
-                return puddle;
-            }));
+        @SafeVarargs
+        public static <A, F> Rain<A, F> merge(Rain<A, F>... rains) {
+            Promise<Puddle<A, F>> c = new Promise<>(() -> new Puddle<>());
+            for (Rain<A ,F> rain : rains) {
+                c = c.bind(puddle -> rain.promise.bind(puddle$ -> {
+                    puddle.addAll(puddle$);
+                    return new Promise<>(() -> puddle);
+                }));
+            }
+            return new Rain<>(c);
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(c);
+            return Objects.hash(seq);
         }
 
         @Override
@@ -244,96 +212,70 @@ public class Rainfall<T> {
                 return false;
             }
             Rain<?, ?> other = (Rain<?, ?>)obj;
-            return c.equals(other.c);
+            return seq == other.seq;
         }
 
     }
 
-    static class Puddle<A, F> implements Iterable<Droplet<A, F>> {
-        Collection<Droplet<A, F>> droplets;
-        Puddle() {
-            this.droplets = new HashSet<>();
+    public static class Puddle<A, F> extends HashSet<Droplet<A, F>> {
+        public Puddle() {
+            super();
         }
-        Puddle(Collection<? extends Droplet<A, F>> nodes) {
-            this.droplets = new HashSet<>(nodes.size());
-            for (Droplet<A ,F> node : nodes) {
-                this.droplets.add(node);
-            }
+        public Puddle(Collection<? extends Droplet<A, F>> nodes) {
+            super(nodes);
         }
-        Puddle(Puddle<A, F> other) {
-            this.droplets = new HashSet<>(other.droplets);
+        public Puddle(int size) {
+            super(size);
         }
         @SafeVarargs
-        public Puddle(Droplet<A, F>... droplets) {
+        Puddle(Droplet<A, F>... droplets) {
             this(Arrays.asList(droplets));
         }
         @SafeVarargs
-        public static <A, F> Puddle<A, F> of (Droplet<A, F>... droplets) {
+        public static <A, F> Puddle<A, F> of(Droplet<A, F>... droplets) {
             return new Puddle<>(droplets);
         }
         public Collection<Droplet<A,F>.SnowFlake> collect() {
-            Collection<Droplet<A,F>.SnowFlake> out = new ArrayList<>(droplets.size());
-            for (Droplet<A, F> droplet : droplets) {
+            Collection<Droplet<A,F>.SnowFlake> out = new ArrayList<>(size());
+            for (Droplet<A, F> droplet : this) {
                 out.add(droplet.freeze());
             }
             return out;
         }
         public <B, G> Puddle<B, G> map(Function<Droplet<A, F>, Droplet<B, G>> g) {
-            Collection<Droplet<B, G>> $ = new HashSet<>();
-            for (Droplet<A, F> node : droplets) {
-                $.add(g.apply(node));
+            Puddle<B, G> out = new Puddle<>(size());
+            for (Droplet<A, F> node : this) {
+                out.add(g.apply(node));
             }
-            return new Puddle<>($);
+            return out;
         }
-        public <B, G> Puddle<B, G> flatmap(BiFunction<A, F, Puddle<B, G>> g) {
-            Collection<Droplet<B, G>> $ = new HashSet<>();
-            for (Droplet<A, F> node : droplets) {
-                $.addAll(g.apply(node.drop, node.let).droplets);
+        public <B, G> Puddle<B, G> flatmap(Function<Droplet<A, F>, Puddle<B, G>> g) {
+            Puddle<B, G> out = new Puddle<>();
+            for (Droplet<A, F> node : this) {
+                out.addAll(g.apply(node));
             }
-            return new Puddle<>($);
+            return out;
         }
         public Puddle<A, F> filter(BiPredicate<A, F> p) {
-            Collection<Droplet<A, F>> $ = new HashSet<>();
-            for (Droplet<A, F> node : droplets) {
+            Puddle<A, F> out = new Puddle<>();
+            for (Droplet<A, F> node : this) {
                 if (p.test(node.drop, node.let)) {
-                    $.add(node);
+                    out.add(node);
                 }
             }
-            return new Puddle<>($);
+            return out;
         }
-        public static <A, F> Puddle<A, F> merge(Puddle<A, F> a, Puddle<A, F> b) {
-            Collection<Droplet<A, F>> out = new HashSet<>(a.droplets.size() + b.droplets.size());
-            out.addAll(a.droplets);
-            out.addAll(b.droplets);
-            return new Puddle<>(out);
-        }
-        public <N extends Droplet<A, F>> void add(N n) {
-            droplets.add(n);
-        }
-        public void addAll(Puddle<A, F> puddle) {
-            droplets.addAll(puddle.droplets);
-        }
-
-        @Override
-        public java.util.Iterator<Rainfall.Droplet<A,F>> iterator() {
-            return droplets.iterator();
-        };
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(droplets);
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            if (this == obj) {
-                return true;
+        @SafeVarargs
+        public static <A, F> Puddle<A, F> merge(Collection<Droplet<A, F>>... puddles) {
+            int size = 0;
+            for (Collection<Droplet<A, F>> puddle : puddles) {
+                size += puddle.size();
             }
-            if (!(obj instanceof Puddle)) {
-                return false;
+            Puddle<A, F> out = new Puddle<>(size);
+            for (Collection<Droplet<A, F>> puddle : puddles) {
+                out.addAll(puddle);
             }
-            Puddle<?, ?> other = (Puddle<?, ?>)obj;
-            return droplets.equals(other.droplets);
+            return out;
         }
     }
 
@@ -375,11 +317,11 @@ public class Rainfall<T> {
                 return false;
             }
             Droplet<?, ?> other = (Droplet<?, ?>)obj;
-            return drop.equals(other.drop) && seq == other.seq;
+            return seq == other.seq;
         }
         @Override
         public int hashCode() {
-            return Objects.hash(drop, seq);
+            return Objects.hash(seq);
         }
 
         public void accept(BiConsumer<A, F> consumer) {
@@ -390,20 +332,31 @@ public class Rainfall<T> {
             return new SnowFlake();
         }
 
+        public String toString() {
+            return freeze().toString();
+        }
+
         public class SnowFlake {
             @Override
             public String toString() {
-                return drop.toString();
+                return id() + " " + drop.toString();
             }
 
             @Override
             public int hashCode() {
-                return Droplet.this.hashCode();
+                return Objects.hash(unfreeze());
             }
 
             @Override
-            public boolean equals(Object other) {
-                return Droplet.this.equals(other);
+            public boolean equals(Object obj) {
+                if (this == obj) {
+                    return true;
+                }
+                if (!(obj instanceof Droplet.SnowFlake)) {
+                    return false;
+                }
+                Droplet<?, ?>.SnowFlake other = (Droplet<?, ?>.SnowFlake)obj;
+                return unfreeze().equals(other.unfreeze());
             }
 
             public A get() {
@@ -412,6 +365,14 @@ public class Rainfall<T> {
 
             public <B> B get(Function<A, B> f) {
                 return f.apply(drop);
+            }
+
+            public String id() {
+                return Integer.toHexString(seq);
+            }
+
+            private Droplet<A, F> unfreeze() {
+                return Droplet.this;
             }
         }
     }
