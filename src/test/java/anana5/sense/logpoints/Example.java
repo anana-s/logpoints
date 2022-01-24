@@ -1,6 +1,7 @@
 package anana5.sense.logpoints;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -15,10 +16,10 @@ public class Example {
 
     static Logger logger = LoggerFactory.getLogger(Example.class);
     
-    List<ICallBack> callbacks;
+    List<ICallBack> callbacks = new ArrayList<>();
 
     public Example() {
-        callbacks = new ArrayList<>();
+        logger.debug("initialized");
     }
 
     public void add(ICallBack callback) {
@@ -26,13 +27,16 @@ public class Example {
         callbacks.add(callback);
     }
 
-    public void run() throws IOException {
+    public void run() throws RuntimeException {
         logger.debug("started");
         for (ICallBack callback : callbacks) {
             try {
-                callback.accept("sweet pineapple");
+                callback.accept("sweet pineapple !");
             } catch (IOException e) {
-                logger.debug("encountered io error");
+                logger.error("encountered io error: {}", e.getLocalizedMessage());
+                logger.error("ignoring");
+            } catch (RuntimeException e) {
+                logger.debug("encountered runtime error: {}", e.getLocalizedMessage());
                 throw e;
             }
         }
@@ -40,9 +44,9 @@ public class Example {
     }
 
     public static void main(String[] args) {
+        logger.info("started {}", LocalDateTime.now());
         Example o = new Example();
         o.add(phrase -> logger.info("call {}", phrase));
-        logger.info("initialized");
         if (args.length != 0) {
             logger.error("wrong number of args");
             System.exit(1);
@@ -50,12 +54,12 @@ public class Example {
         } else {
             try {
                 o.run();
-            } catch (IOException e) {
-                logger.error("cannot recover from io error");
+            } catch (RuntimeException e) {
+                logger.error("cannot recover from runtime error");
                 System.exit(2);
                 return;
             }
         }
-        logger.info("successfully ran all");
+        logger.info("done {}", LocalDateTime.now());
     }
 }

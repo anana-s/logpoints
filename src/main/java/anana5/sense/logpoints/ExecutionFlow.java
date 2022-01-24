@@ -3,8 +3,10 @@ package anana5.sense.logpoints;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 import org.slf4j.Logger;
@@ -16,6 +18,7 @@ import soot.SootMethod;
 import soot.Unit;
 import soot.jimple.Stmt;
 import soot.jimple.toolkits.callgraph.CallGraph;
+import soot.jimple.toolkits.callgraph.Edge;
 import soot.toolkits.graph.ExceptionalUnitGraph;
 
 public class ExecutionFlow extends Rainfall<Stmt> {
@@ -54,7 +57,8 @@ public class ExecutionFlow extends Rainfall<Stmt> {
             MultiReader readers = new MultiReader(methods.size());
             for (SootMethod method : methods) {
                 if (!skip(method)) {
-                    logger.debug("Building {}.", method);
+                    roots.add(method);
+                    logger.debug("Building entry context {}.", method);
                     readers.add(new Context(null, method).root());
                 }
             }
@@ -86,13 +90,14 @@ public class ExecutionFlow extends Rainfall<Stmt> {
             }
         }
 
+        Set<SootMethod> roots = new HashSet<>();
+
         class Context {
             Map<Unit, Collection<Context>> seen;
             Map<Unit, Droplet<Unit, Reader>> visited;
             Unit invoker;
             ExceptionalUnitGraph cfg;
-            Reader ret;
-            Context prv;
+            UnitReader ret;
             Reader root;
     
             Context(Unit invoker, SootMethod method) {
@@ -100,33 +105,48 @@ public class ExecutionFlow extends Rainfall<Stmt> {
                 this.ret = new UnitReader();
             }
     
-            Context(Map<Unit, Collection<Context>> seen, Unit invoker, SootMethod method, Reader ret, Context prv) {
+            Context(Map<Unit, Collection<Context>> seen, Unit invoker, SootMethod method, UnitReader ret, Context prv) {
                 this.seen = seen;
                 this.visited = new HashMap<>();
                 this.invoker = invoker;
                 this.cfg = new ExceptionalUnitGraph(method.retrieveActiveBody());
                 this.ret = ret;
-                this.prv = prv;
                 this.root = null;
             }
     
-            public Collection<Context> push(Unit unit, Reader ret) {
+            public Collection<Context> push(Unit unit, UnitReader ret) {
                 return seen.computeIfAbsent(unit, $ -> {
                     Collection<Context> contexts = new ArrayList<>();
-                    cg.edgesOutOf(unit).forEachRemaining(edge -> {
+                    for (Edge edge : (Iterable<Edge>)() -> cg.edgesOutOf(unit)) {
                         SootMethod method = edge.tgt();
                         if (skip(method)) {
-                            return;
+                            continue;
                         }
-                        contexts.add(new Context(seen, unit, method, ret, this));
-                    });
+                        if (edge.isClinit()) {
+                            if (roots.contains(method)) {
+                                continue;
+                            }
+                            roots.add(method);
+                            contexts.add(new Context(unit, method));
+                        } else {
+                            contexts.add(new Context(seen, unit, method, ret, this));
+                        }
+                        logger.debug("Building context of {} =>> {}.", edge.src(), unit);
+                    }
+                    // cg.edgesOutOf(unit).forEachRemaining(edge -> {
+                    //     SootMethod method = edge.tgt();
+                    //     if (skip(method)) {
+                    //         return;
+                    //     }
+                    //     contexts.add(new Context(seen, unit, method, ret, this));
+                    // });
                     return contexts;
                 });
             }
 
             public Context pop() {
                 seen.remove(invoker);
-                return prv;
+                return ret.ctx();
             }
     
             public Reader root() {
@@ -146,6 +166,10 @@ public class ExecutionFlow extends Rainfall<Stmt> {
                     this.units = unit;
                 }
 
+                public Context ctx() {
+                    return Context.this;
+                }
+
                 public Reader of(Unit unit) {
                     List<Unit> units = cfg.getSuccsOf(unit);
                     if (units.isEmpty()) {
@@ -153,7 +177,7 @@ public class ExecutionFlow extends Rainfall<Stmt> {
                         return ret;
                     }
 
-                    Reader ret = new UnitReader(units);
+                    UnitReader ret = new UnitReader(units);
 
                     if (unit instanceof Stmt && ((Stmt)unit).containsInvokeExpr()) {
                         MultiReader readers = new MultiReader();

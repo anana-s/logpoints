@@ -19,6 +19,8 @@ public class DotPrinter implements AutoCloseable {
         this.discovered = new HashMap<>();
         this.out = out;
         this.out.println("digraph {");
+        this.out.println("    edge [style=bold]");
+        this.out.println("    node [shape=box, style=\"rounded,bold\", fontname=\"helvetica\"]");
         this.formatter = formatter;
     }
     
@@ -31,11 +33,12 @@ public class DotPrinter implements AutoCloseable {
         }
         String repr = "\"" + StringEscapeUtils.escapeJava(formatter.apply(o)) + "\"";
         discovered.put(o, repr);
+        out.println("    " + repr);
         return repr;
     }
 
     public void print(Droplet<Stmt, ?>.SnowFlake from, Droplet<Stmt, ?>.SnowFlake to) {
-        StringBuilder s = new StringBuilder();
+        StringBuilder s = new StringBuilder("    ");
         s.append(discover(from));
         s.append(" -> ");
         s.append(discover(to));

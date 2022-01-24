@@ -65,23 +65,28 @@ public class Rainfall<T> {
         return unfold(f, s);
     }
 
-    public Rainfall<T> filter(Predicate<Droplet<T, Rainfall<T>>.SnowFlake> p) {
-        Set<Droplet<T, Rainfall<T>>> seen = new HashSet<>();
-        return fold(rain -> new Rainfall<>(rain.flatmap(droplet -> {
-            if (seen.contains(droplet)) {
-                return new Rain<>();
-            }
+    // public Rainfall<T> filter(Predicate<Droplet<T, Rainfall<T>>.SnowFlake> p) {
+    //     Map<Droplet<T, Rainfall<T>>, Rain<T, Rainfall<T>>> cache = new HashMap<>();
+    //     Set<Droplet<T, Rainfall<T>>> seen = new HashSet<>();
+    //     return fold(rain -> new Rainfall<>(rain.flatmap(droplet -> {
+    //         if (cache.containsKey(droplet)) {
+    //             return cache.get(droplet);
+    //         }
+    //         if (seen.contains(droplet)) {
+    //             return new Rain<>();
+    //         }
 
-            if (p.test(droplet.freeze())) {
-                Rain<T, Rainfall<T>> out = new Rain<>(() -> droplet);
-                return out;
-            } else {
-                seen.add(droplet);
-                droplet.let.rain.promise = droplet.let.rain.promise.then($ -> seen.remove(droplet));
-                return droplet.let.rain;
-            }
-        })));
-    }
+    //         if (p.test(droplet.freeze())) {
+    //             Rain<T, Rainfall<T>> out = new Rain<>(() -> droplet);
+    //             cache.put(droplet, out);
+    //             return out;
+    //         } else {
+    //             seen.add(droplet);
+    //             droplet.let.rain.promise = droplet.let.rain.promise.then($ -> seen.remove(droplet));
+    //             return droplet.let.rain;
+    //         }
+    //     })));
+    // }
 
     public <R> Rainfall<R> map(Function<T, R> f) {
         return unfold(this, rainfall -> rainfall.rain.map(droplet -> droplet.map(f)));
@@ -138,7 +143,7 @@ public class Rainfall<T> {
 
     public static class Rain<A ,F> {
         static int count = 0;
-        final int seq = 0;
+        final int seq;
         Promise<Puddle<A, F>> promise;
         public Rain(Promise<Puddle<A, F>> promise) {
             this(count++, promise);
@@ -148,13 +153,16 @@ public class Rainfall<T> {
             this(count++, suppliers);
         }
         public Rain(int seq, Promise<Puddle<A, F>> promise) {
+            this.seq = seq;
             this.promise = promise;
         }
         public Rain(int seq, Rain<A, F> rain) {
+            this.seq = seq;
             this.promise = rain.promise;
         }
         @SafeVarargs
         public Rain(int seq, Supplier<Droplet<A, F>>... suppliers) {
+            this.seq = seq;
             this.promise = new Promise<>(() -> new Puddle<>());
             for (Supplier<Droplet<A, F>> supplier : suppliers) {
                 this.promise = promise.map(puddle -> {

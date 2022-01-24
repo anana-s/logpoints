@@ -23,9 +23,11 @@ import net.sourceforge.argparse4j.inf.ArgumentParserException;
 import net.sourceforge.argparse4j.inf.Namespace;
 import polyglot.ast.Local;
 import soot.PackManager;
+import soot.PhaseOptions;
 import soot.Scene;
 import soot.SootMethodRef;
 import soot.jimple.Stmt;
+import soot.options.CGOptions;
 import soot.options.Options;
 
 public class Main {
@@ -79,6 +81,7 @@ public class Main {
             return;
         }
 
+        // classpath and modulepath
         Options.v().set_prepend_classpath(ns.getBoolean("prepend"));
         if (ns.getString("classpath") != null) {
             Options.v().set_soot_classpath(ns.getString("classpath"));
@@ -86,20 +89,31 @@ public class Main {
         if (ns.getString("modulepath") != null) {
             Options.v().set_soot_modulepath(ns.getString("modulepath"));
         }
-        Options.v().set_whole_program(true);
-        Options.v().set_allow_phantom_refs(true);
-        Options.v().set_wrong_staticness(Options.wrong_staticness_fix);
+
+        // application options
         Options.v().set_app(ns.getBoolean("app"));
-        Options.v().setPhaseOption("cg.spark", "on");
-
-        List<String> classes = ns.getList("classes");
-        Options.v().classes().addAll(classes);
-        Options.v().set_main_class(classes.get(classes.size() - 1));
-
         List<String> exclusions = new ArrayList<>(ns.getList("exclude"));
         exclusions.add("jdk.*");
         Options.v().set_exclude(exclusions);
         Options.v().set_include(ns.getList("include"));
+
+        // cg options
+        Options.v().setPhaseOption("cg.spark", "enabled:true");
+        Options.v().setPhaseOption("cg", "jdkver:11");
+
+        // trim cfgs
+        Options.v().set_throw_analysis(Options.throw_analysis_unit);
+        Options.v().set_omit_excepting_unit_edges(true);
+        Options.v().setPhaseOption("jb.tt", "enabled:true");
+
+        // other
+        Options.v().set_whole_program(true);
+        Options.v().set_allow_phantom_refs(true);
+        Options.v().set_wrong_staticness(Options.wrong_staticness_fix);
+
+        List<String> classes = ns.getList("classes");
+        Options.v().classes().addAll(classes);
+        Options.v().set_main_class(classes.get(classes.size() - 1));
 
         Scene.v().loadNecessaryClasses();
 
@@ -108,10 +122,8 @@ public class Main {
         logger.info("Building callgraph.");
         PackManager.v().getPack("cg").apply();
 
-        Rainfall<Stmt> flow = new ExecutionFlow(
-            Scene.v().getCallGraph(),
-            Scene.v().getEntryPoints()
-        );
+        LogGraph flow = new LogGraph()
+            .build(Scene.v().getEntryPoints());
 
         List<String> queries = ns.getList("tag");
         
@@ -152,7 +164,7 @@ public class Main {
 
     static String format(Droplet<Stmt, ?>.SnowFlake flake) {
         if (flake.get().containsInvokeExpr()) {
-            return flake.id() + " " + flake.get().getInvokeExpr().getMethodRef().getDeclaringClass().getName() + "." + flake.get().getInvokeExpr().getMethodRef().getName() + flake.get().getInvokeExpr().getArgs().toString();
+            return "(" + flake.id() + ") " + flake.get().getInvokeExpr().getMethodRef().getName() + flake.get().getInvokeExpr().getArgs().toString();
         } else {
             return flake.toString();
         }
