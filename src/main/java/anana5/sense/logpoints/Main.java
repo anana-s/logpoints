@@ -13,9 +13,9 @@ import com.google.common.collect.Lists;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import anana5.sense.graph.Computation;
-import anana5.sense.graph.Rainfall;
-import anana5.sense.graph.Rainfall.Droplet;
+import anana5.graph.Graph;
+import anana5.graph.Vertex;
+import anana5.util.Computation;
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.impl.Arguments;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
@@ -122,13 +122,12 @@ public class Main {
         logger.info("Building callgraph.");
         PackManager.v().getPack("cg").apply();
 
-        LogGraph flow = new LogGraph()
-            .build(Scene.v().getEntryPoints());
 
-        List<String> queries = ns.getList("tag");
+        GraphFactory factory = new GraphFactory();
         
-        flow = flow.filter(flake -> {
-            Stmt s = flake.get();
+        List<String> queries = ns.getList("tag");
+        factory.filter(v -> {
+            Stmt s = v.get();
             boolean keep = false;
 
             if (s.containsInvokeExpr()) {
@@ -142,31 +141,31 @@ public class Main {
             }
 
             if (keep) {
-                logger.trace("+ {}", flake);
+                logger.trace("+ {}", v);
             } else {
-                logger.trace("- {}", flake);
+                logger.trace("- {}", v);
             }
 
             return keep;
         });
+        
+        Graph<Stmt> graph = factory.build(Scene.v().getCallGraph(), Scene.v().getEntryPoints());
 
         try (var printer = new DotPrinter(System.out, Main::format)) {
-            flow.traverse((s, ts) -> {
-                for (var t : ts) {
-                    printer.print(s, t);
-                }
-            }).run();
+            graph.traverse((v) -> {
+                printer.print(v.parent(), v);
+            });
         }
 
         LocalDateTime end = LocalDateTime.now();
         logger.info("Done in {} iterations ({}) at {}.", Computation.statistics.iterations(), Duration.between(end, start), end);
     }
 
-    static String format(Droplet<Stmt, ?>.SnowFlake flake) {
-        if (flake.get().containsInvokeExpr()) {
-            return "(" + flake.id() + ") " + flake.get().getInvokeExpr().getMethodRef().getName() + flake.get().getInvokeExpr().getArgs().toString();
+    static String format(Vertex<Stmt> vertex) {
+        if (vertex.get().containsInvokeExpr()) {
+            return "(" + vertex.id() + ") " + vertex.get().getInvokeExpr().getMethodRef().getName() + vertex.get().getInvokeExpr().getArgs().toString();
         } else {
-            return flake.toString();
+            return vertex.toString();
         }
     }
 }

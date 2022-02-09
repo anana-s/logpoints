@@ -1,4 +1,4 @@
-package anana5.sense.graph;
+package anana5.util;
 
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -7,22 +7,31 @@ import java.util.function.Supplier;
 
 public class Promise<T> implements Computation<T> {
     Computation<T> c;
-    T cache;
+    T value;
     boolean resolved;
-    public Promise(Supplier<T> pure) {
-       this(Computation.of(pure));
-    }
+
     public Promise(Promise<T> other) {
         this.c = other.c;
-        this.cache = other.cache;
+        this.value = other.value;
     }
+
     public Promise(Computation<T> continuation) {
         this.c = continuation;
+        this.value = null;
     }
+
+    public static <T> Promise<T> of(Supplier<T> pure) {
+        return new Promise<>(Computation.of(pure));
+    }
+
+    public static <T> Promise<T> just(T t) {
+        return new Promise<>(Computation.just(t));
+    }
+
     @Override
     public Continuation accept(Callback<T> k) {
         if (resolved) {
-            return Continuation.apply(k, cache);
+            return Continuation.apply(k, value);
         } else {
             return Continuation.accept(c, k.then(this::resolve));
         }
@@ -48,7 +57,7 @@ public class Promise<T> implements Computation<T> {
     }
     public void resolve(T t) {
         if (!resolved) {
-            cache = t;
+            value = t;
             resolved = true;
         }
     }
@@ -58,8 +67,8 @@ public class Promise<T> implements Computation<T> {
     @Override
     public T run() {
         Computation.super.run(this::resolve);
-        assert cache != null;
-        return cache;
+        assert value != null;
+        return value;
     }
     @Override
     public void run(Consumer<T> f) {

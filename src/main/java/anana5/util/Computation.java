@@ -1,4 +1,4 @@
-package anana5.sense.graph;
+package anana5.util;
 
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -37,6 +37,22 @@ public interface Computation<T> {
         @Override
         public Continuation accept(Callback<T> k) {
             return Continuation.apply(k, null);
+        }
+    }
+
+    static <T> Computation<T> just(T t) {
+        return new Just<>(t);
+    }
+
+    static class Just<T> implements Computation<T> {
+        final T t;
+        Just(T t) {
+            this.t = t;
+        }
+
+        @Override
+        public Continuation accept(Callback<T> k) {
+            return Continuation.apply(k, t);
         }
     }
 

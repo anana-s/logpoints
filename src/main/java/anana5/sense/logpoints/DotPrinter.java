@@ -7,15 +7,15 @@ import java.util.function.Function;
 
 import org.apache.commons.text.StringEscapeUtils;
 
-import anana5.sense.graph.Rainfall.Droplet;
+import anana5.graph.Vertex;
 import soot.jimple.Stmt;
 
 public class DotPrinter implements AutoCloseable {
-    Map<Droplet<Stmt, ?>.SnowFlake, String> discovered;
+    Map<Vertex<Stmt>, String> discovered;
     PrintStream out;
-    Function<Droplet<Stmt, ?>.SnowFlake, String> formatter;
+    Function<Vertex<Stmt>, String> formatter;
 
-    DotPrinter(PrintStream out, Function<Droplet<Stmt, ?>.SnowFlake, String> formatter) {
+    DotPrinter(PrintStream out, Function<Vertex<Stmt>, String> formatter) {
         this.discovered = new HashMap<>();
         this.out = out;
         this.out.println("digraph {");
@@ -24,7 +24,7 @@ public class DotPrinter implements AutoCloseable {
         this.formatter = formatter;
     }
     
-    public String discover(Droplet<Stmt, ?>.SnowFlake o) {
+    public String discover(Vertex<Stmt> o) {
         if (o == null) {
             return "root";
         }
@@ -37,7 +37,7 @@ public class DotPrinter implements AutoCloseable {
         return repr;
     }
 
-    public void print(Droplet<Stmt, ?>.SnowFlake from, Droplet<Stmt, ?>.SnowFlake to) {
+    public void print(Vertex<Stmt> from, Vertex<Stmt> to) {
         StringBuilder s = new StringBuilder("    ");
         s.append(discover(from));
         s.append(" -> ");

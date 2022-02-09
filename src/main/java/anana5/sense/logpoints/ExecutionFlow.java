@@ -12,8 +12,8 @@ import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import anana5.sense.graph.Promise;
-import anana5.sense.graph.Rainfall;
+import anana5.graph.rainfall.Rain;
+import anana5.util.Promise;
 import soot.SootMethod;
 import soot.Unit;
 import soot.jimple.Stmt;
@@ -21,7 +21,7 @@ import soot.jimple.toolkits.callgraph.CallGraph;
 import soot.jimple.toolkits.callgraph.Edge;
 import soot.toolkits.graph.ExceptionalUnitGraph;
 
-public class ExecutionFlow extends Rainfall<Stmt> {
+public class ExecutionFlow extends Rain<Stmt> {
 
     static Logger logger = LoggerFactory.getLogger(ExecutionFlow.class);
 
@@ -36,7 +36,7 @@ public class ExecutionFlow extends Rainfall<Stmt> {
         super(build(callgraph, entrypoints));
     }
 
-    private static Rainfall<Stmt> build(CallGraph cg, Collection<SootMethod> es) {
+    private static Rain<Stmt> build(CallGraph cg, Collection<SootMethod> es) {
         Builder builder = new Builder(cg);
         return unfold(builder, builder.roots(es)).map(Stmt.class::cast);
     }
