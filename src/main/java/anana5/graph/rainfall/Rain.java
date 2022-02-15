@@ -119,5 +119,13 @@ public class Rain<T> implements Graph<T> {
         }
         return new Rain<>(LList.merge(droplets));
     }
+
+    public static <T> Rain<T> merge(LList<Rain<T>> rain) {
+        return new Rain<>(rain.flatmap(r -> r.droplets));
+    }
+
+    public static <T> Rain<T> bind(Promise<Rain<T>> promise) {
+        return new Rain<>(LList.bind(promise.map(rain -> rain.droplets)));
+    }
     
 }

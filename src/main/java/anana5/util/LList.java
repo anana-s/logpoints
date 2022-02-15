@@ -8,6 +8,10 @@ import java.util.function.Function;
 
 public class LList<T> {
     final private Promise<ListF<T, LList<T>>> unfix;
+
+    public LList(T item, LList<T> tail) {
+        unfix = Promise.just(ListF.cons(item, tail));
+    }
     
     public LList() {
         this(Promise.just(ListF.nil()));
@@ -82,5 +86,13 @@ public class LList<T> {
 
     public <R> R fold(Function<Promise<ListF<T, R>>, R> func) {
         return func.apply(unfix.map(listF -> listF.fmap(f -> f.fold(func))));
+    }
+
+    public static <T> LList<T> bind(Promise<LList<T>> promise) {
+        return new LList<>(promise.bind(lList -> lList.unfix));
+    }
+
+    public Promise<Boolean> isEmpty() {
+        return unfix.map(listF -> listF.match(() -> true, (t, f) -> false));
     }
 }
