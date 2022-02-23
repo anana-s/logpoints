@@ -4,16 +4,23 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import anana5.graph.Box;
+import anana5.graph.DirectedEdge;
 import anana5.graph.Graph;
-import anana5.graph.rainfall.Drop;
+import anana5.graph.Vertex;
 import anana5.graph.rainfall.Droplet;
 import anana5.graph.rainfall.Rain;
 import anana5.util.LList;
@@ -28,188 +35,151 @@ import soot.toolkits.graph.ExceptionalUnitGraph;
 
 public class GraphFactory {
 
-    static Logger logger = LoggerFactory.getLogger(ExecutionFlow.class);
+    static Logger logger = LoggerFactory.getLogger(GraphFactory.class);
 
     CallGraph cg;
+    List<Pattern> tags = new ArrayList<>();
 
     public GraphFactory(CallGraph cg) {
         this.cg = cg;
     }
 
-    public Rain<Stmt> build(CallGraph cg, Iterable<SootMethod> entrypoints) {
-        var builder = new Builder(cg);
-        var states = new LList<>(entrypoints).flatmap(entrypoint -> {
-            var context = builder.new Context(entrypoint);
-            var frame = builder.new Frame(context);
-            return context.roots().map(pointer -> builder.new State(frame, pointer));
-        });
-        return Rain.unfold(states, builder);
+    public GraphFactory tag(Pattern pattern) {
+        tags.add(pattern);
+        return this;
+    }
+
+    public GraphFactory tag(int flags, String... patterns) {
+        for (String pattern : patterns) {
+            tag(Pattern.compile(pattern, flags));
+        }
+        return this;
+    }
+
+    public GraphFactory tag(String... patterns) {
+        for (String pattern : patterns) {
+            tag(Pattern.compile(pattern));
+        }
+        return this;
+    }
+
+    public Rain<Stmt> build(Iterable<SootMethod> entrypoints) {
+        return build(new LList<>(entrypoints), new Rain<>());
     }
 
     private Rain<Stmt> build(LList<SootMethod> methods, Rain<Stmt> rets) {
-        return Rain.merge(methods.map(method -> build(method).fold(droplets -> {
-            var promise = droplets.isEmpty().map(isEmpty -> {
-                if (isEmpty) {
+
+        methods = methods.filter(m -> {
+            if (!m.isPhantom() && m.isConcrete() && !m.isJavaLibraryMethod() && !m.getDeclaringClass().isLibraryClass()) {
+                return Promise.just(true);
+            } else {
+                logger.trace("{} skipped", m);
+                return Promise.just(false);
+            }
+        });
+
+        var rain = Rain.merge(methods.map(m -> Promise.just(build(m))));
+
+        // create new context
+        rain = rain.fold(droplets -> {
+            return Rain.bind(droplets.isEmpty().map(condition -> {
+                if (condition) {
                     return rets;
                 } else {
                     return new Rain<>(droplets);
                 }
-            });
-            return Rain.bind(promise);
-        })));
+            }));
+        });
+
+        return rain;
     }
 
     Map<SootMethod, Rain<Stmt>> visited = new HashMap<>();
     private Rain<Stmt> build(SootMethod method) {
-        return visited.computeIfAbsent(method, m -> new CFGFactory(method).build());
+        return visited.compute(method, (m, rain) -> {
+            if (rain != null) {
+                logger.trace("{} loaded from cache.", method);
+                // map to new boxes
+                return rain.map(box -> new Box<>(box.value()));
+            }
+            var builder = new CFGFactory(method);
+            var out = Promise.effect(() -> {
+                logger.trace("building {}", method);
+            }).then(($) -> Promise.just(builder.build()));
+            return Rain.bind(out);
+        });
     }
 
     class CFGFactory {
-        Map<Stmt, Rain<Stmt>> visited;
+        SootMethod method;
+        Map<Stmt, Droplet<Stmt, Rain<Stmt>>> visited;
+        Set<Stmt> skip;
         ExceptionalUnitGraph cfg;
         CFGFactory(SootMethod method) {
+            this.method = method;
+            this.visited = new HashMap<>();
             this.cfg = new ExceptionalUnitGraph(method.retrieveActiveBody());
-
         }
 
         Rain<Stmt> build() {
-            return build(new LList<>(cfg.getHeads()).map(unit -> (Stmt)unit));
+            return filter(build(new LList<>(cfg.getHeads()).map(unit -> Promise.just((Stmt)unit))), new HashSet<>(), new HashMap<>());
+        }
+
+        private Rain<Stmt> filter(Rain<Stmt> rain, Set<Box<Stmt>> guards, Map<Box<Stmt>, Rain<Stmt>> cache) {
+            return Rain.merge(rain.unfix().map(drop -> Promise.pure(() -> {
+                var box = drop.get();
+                if (guards.contains(box)) {
+                    // break empty cycle
+                    return new Rain<>();
+                }
+
+                if (cache.containsKey(box)) {
+                    // return from cache;
+                    return cache.get(box);
+                }
+
+                var stmt = box.value();
+                if (stmt.containsInvokeExpr()) {
+                    var methodRef = stmt.getInvokeExpr().getMethodRef();
+                    var declaringClass = methodRef.getDeclaringClass();
+                    String methodName = declaringClass.getName() + "." + methodRef.getName();
+                    for (Pattern pattern : GraphFactory.this.tags) {
+                        if (pattern.matcher(methodName).find()) {
+                            var out = new Rain<>(drop.fmap(let -> filter(let, new HashSet<>(), cache)));
+                            cache.put(box, out);
+                            return out;
+                        }
+                    }
+                }
+
+                logger.trace("{} [{}] skipped", this.method, stmt);
+                guards.add(box);
+                return filter(drop.next(), guards, cache);
+            })));
         }
 
         private Rain<Stmt> build(LList<Stmt> stmts) {
-            var droplets = stmts.map(stmt -> {
-                var rets = build(new LList<>(cfg.getSuccsOf(stmt)).map(unit -> (Stmt)unit));
-
-                if (stmt.containsInvokeExpr()) {
-                    var methods = new LList<>(cg.edgesOutOf(stmt)).map(edge -> edge.tgt());
-                    return new Droplet<>(stmt, GraphFactory.this.build(methods, rets));
-                } else {
-                    return new Droplet<>(stmt, rets);
-                }
-            });
-            return new Rain<Stmt>(droplets);
-        }
-    }
-
-    private static class Builder implements Function<LList<Builder.State>, LList<Droplet<Stmt, LList<Builder.State>>>> {
-        final private Map<SootMethod, Rain<Stmt>> cache = new HashMap<>();
-        final private CallGraph cg;
-
-        Builder(CallGraph cg) {
-            this.cg = cg;
-        }
-
-        @Override
-        public LList<Droplet<Stmt, LList<State>>> apply(LList<State> states) {
-            return states.map(state -> state.droplet());
-        }
-
-        private class State {
-            Frame frame;
-            Context.Pointer pointer;
-
-            State(Frame frame, Context.Pointer pointer) {
-                this.frame = frame;
-                this.pointer = pointer;
-            }
-
-            Droplet<Stmt, LList<State>> droplet() {
-                return pointer.droplet(frame);
-            }
-        }
-
-        private class Frame {
-            final Frame parent;
-            final Context context;
-            final LList<Context.Pointer> rets;
-
-            Frame(Context context) {
-                this(null, context, new LList<>());
-            }
-
-            Frame(Frame parent, Context context, LList<Context.Pointer> rets) {
-                this.parent = parent;
-                this.context = context;
-                this.rets = rets;
-            }
-
-            Frame(SootMethod method) {
-                this(new Context(method));
-            }
-
-            Frame(Frame parent, SootMethod method, LList<Context.Pointer> rets) {
-                this.parent = parent;
-                this.context = new Context(method);
-                this.rets = rets;
-            }
-
-            LList<Context.Pointer> nextOf(Context.Pointer pointer) {
-                var units = context.cfg.getSuccsOf(pointer.stmt);
-                if (units.isEmpty()) {
-                    return rets;
-                }
-                return new LList<>(units).map(unit -> context.new Pointer((Stmt)unit));
-            }
-        }
-
-        private class Context {
-            ExceptionalUnitGraph cfg;
-
-            public Context(SootMethod method) {
-                this.cfg = new ExceptionalUnitGraph(method.getActiveBody());
-            }
-
-            private LList<Pointer> roots = null;
-            public LList<Pointer> roots() {
-                if (roots == null) {
-                    roots = new LList<>(cfg.getHeads()).map(unit -> new Pointer((Stmt)unit));
-                }
-                return roots;
-            }
-
-            public class Pointer {
-                final private Stmt stmt;
-    
-                private Droplet<Stmt, LList<State>> droplet;
-                public Droplet<Stmt, LList<State>> droplet(Frame frame) {
-                    if (droplet != null) {
-                        return droplet;
+            // build rain for each stmt and merge
+            return new Rain<>(stmts.map(stmt -> Promise.pure(() -> {
+                return visited.compute(stmt, ($, drop) -> {
+                    if (drop != null) {
+                        logger.trace("{} [{}] loaded from cache", this.method, stmt);
+                        return drop;
                     }
 
-                    LList<Pointer> rets = frame.nextOf(this);
+                    //TODO handle exceptional dests;
+    
+                    var sucs = cfg.getUnexceptionalSuccsOf(stmt);
+                    var rets = build(new LList<>(sucs).map(unit -> Promise.just((Stmt)unit)));
         
-                    if (isInvokation()) {
-                        droplet = new Droplet<>(stmt, new LList<>(cg.edgesOutOf(stmt)).flatmap(edge -> {
-                            // create new frame for invoked method
-                            Frame newFrame = new Frame(frame, edge.tgt(), rets);
-
-
-                            return null;
-                        }));
-                    } else {
-                        droplet = new Droplet<>(stmt, rets.map(pointer -> new State(frame, pointer)));
+                    if (stmt.containsInvokeExpr()) {
+                        var methods = new LList<>(cg.edgesOutOf(stmt)).map(edge -> Promise.just(edge.tgt()));
+                        logger.trace("{} [{}] expanded with {} successors", this.method, stmt, sucs.size());
+                        rets = GraphFactory.this.build(methods, rets);
                     }
-    
-                    return droplet;
-                }
-            
-                private Pointer(Stmt stmt) {
-                    this.stmt = stmt;
-                }
-            
-                private boolean isInvokation() {
-                    return this.stmt.containsInvokeExpr();
-                }
-            }
-        }
-
-        private static boolean shouldSkip(SootMethod m) {
-            return !m.isPhantom() 
-            && m.isConcrete()
-            && !m.isJavaLibraryMethod()
-            && !m.getDeclaringClass().isLibraryClass();
+                    return new Droplet<>(new Box<>(stmt), rets);
+                });
+            })));
         }
     }
-
-    public interface Filter extends Predicate<Drop<Stmt>> {}
 }

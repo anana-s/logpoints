@@ -1,7 +1,7 @@
 package anana5.graph;
 
+import com.google.common.base.Function;
+
 public interface Vertex<T> {
-    int id();
-    Vertex<T> parent();
-    T get();
+    abstract T value();
 }

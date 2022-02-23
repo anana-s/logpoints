@@ -1,65 +1,101 @@
 package anana5.util;
 
-import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+import anana5.util.function.Effect;
+
 public class Promise<T> implements Computation<T> {
-    Computation<T> c;
-    T value;
     boolean resolved;
+    T value;
 
-    public Promise(Promise<T> other) {
-        this.c = other.c;
-        this.value = other.value;
-    }
-
-    public Promise(Computation<T> continuation) {
-        this.c = continuation;
-        this.value = null;
-    }
-
-    public static <T> Promise<T> of(Supplier<T> pure) {
-        return new Promise<>(Computation.of(pure));
-    }
-
-    public static <T> Promise<T> just(T t) {
-        return new Promise<>(Computation.just(t));
-    }
-
-    @Override
-    public Continuation accept(Callback<T> k) {
-        if (resolved) {
-            return Continuation.apply(k, value);
-        } else {
-            return Continuation.accept(c, k.then(this::resolve));
+    static class Unresolved extends RuntimeException {
+        Promise<?> promise;
+        public Unresolved(Promise<?> promise) {
+            this.promise = promise;
         }
     }
-    @Override
-    public <R> Promise<R> map(Function<T, R> f) {
-        return new Promise<>(Computation.super.map(f));
+
+    public Promise() {
+        this.resolved = false;
     }
-    @Override
-    public <R> Promise<R> apply(Computation<Function<T, R>> f) {
-        return new Promise<>(Computation.super.apply(f));
+
+    public Promise(Consumer<Consumer<T>> promise) {
+        this();
+        promise.accept(this::resolve);
     }
-    @Override
-    public <S> Promise<S> bind(Function<T, Computation<S>> f) {
-        return new Promise<>(Computation.super.bind(f));
+
+    public void resolve() {
+        resolved = true;
     }
-    @Override
-    public Promise<T> then(Consumer<T> f) {
-        return new Promise<>(Computation.super.then(f));
-    }
-    public static <T> Promise<T> nil() {
-        return new Promise<>(Computation.nil());
-    }
+
     public void resolve(T t) {
         if (!resolved) {
             value = t;
             resolved = true;
         }
+    }
+
+    public static <T> Promise<T> just(T t) {
+        return Promise.from(Computation.just(t));
+    }
+
+    public static <T> Promise<T> pure(Supplier<T> supplier) {
+        return Promise.from(Computation.pure(supplier));
+    }
+
+    public static Promise<Void> effect(Effect effect) {
+        return Promise.from(Computation.pure(() -> {
+            effect.apply();
+            return null;
+        }));
+    }
+
+    public static <T> Promise<T> from(Computation<T> computation) {
+        return new ComputationAdapter<>(computation);
+    }
+
+    static class ComputationAdapter<T> extends Promise<T> {
+        Computation<T> c;
+        ComputationAdapter(Computation<T> c) {
+            this.c = c;
+        }
+        @Override
+        public Continuation accept(Callback<T> k) throws Unresolved {
+            if (resolved) {
+                return Continuation.apply(k, value);
+            } else {
+                return Continuation.accept(c, k.then(this::resolve));
+            }
+        }
+    }
+
+    @Override
+    public Continuation accept(Callback<T> k) throws Unresolved {
+        if (resolved) {
+            return Continuation.apply(k, value);
+        } else {
+            throw new Unresolved(this);
+        }
+    }
+    @Override
+    public <R> Promise<R> map(Function<T, R> f) {
+        return Promise.from(Computation.super.map(f));
+    }
+    @Override
+    public <R> Promise<R> apply(Computation<Function<T, R>> f) {
+        return Promise.from(Computation.super.apply(f));
+    }
+    @Override
+    public <S> Promise<S> bind(Function<T, Computation<S>> f) {
+        return then(f);
+    }
+    public <S> Promise<S> then(Function<T, Computation<S>> f) {
+        return Promise.from(Computation.super.bind(f));
+    }
+    public static <T> Promise<T> nil() {
+        return Promise.from(Computation.nil());
     }
     public boolean resolved() {
         return this.resolved;
@@ -67,26 +103,11 @@ public class Promise<T> implements Computation<T> {
     @Override
     public T run() {
         Computation.super.run(this::resolve);
-        assert value != null;
+        assert resolved == true;
         return value;
     }
     @Override
     public void run(Consumer<T> f) {
         f.accept(this.run());
-    }
-    @Override
-    public int hashCode() {
-        return Objects.hash(c);
-    }
-    @Override
-    public boolean equals(Object obj) {
-        if (obj == null) {
-            return false;
-        }
-        if (!(obj instanceof Promise)) {
-            return false;
-        }
-        Promise<?> other = (Promise<?>)obj;
-        return c.equals(other.c);
     }
 }

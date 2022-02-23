@@ -25,9 +25,6 @@ public class DotPrinter implements AutoCloseable {
     }
     
     public String discover(Vertex<Stmt> o) {
-        if (o == null) {
-            return "root";
-        }
         if (discovered.containsKey(o)) {
             return discovered.get(o);
         }

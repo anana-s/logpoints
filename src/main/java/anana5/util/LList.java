@@ -1,6 +1,7 @@
 package anana5.util;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.function.BiFunction;
@@ -13,8 +14,9 @@ public class LList<T> {
         unfix = Promise.just(ListF.cons(item, tail));
     }
     
-    public LList() {
-        this(Promise.just(ListF.nil()));
+    @SafeVarargs
+    public LList(T... ts) {
+        this(Arrays.asList(ts));
     }
 
     public LList(Iterable<T> iter) {
@@ -22,13 +24,13 @@ public class LList<T> {
     }
 
     public LList(Iterator<T> iter) {
-        this(iter, $ -> Promise.of(() -> {
+        this(iter, $ -> {
             if (iter.hasNext()) {
-                return ListF.cons(iter.next(), iter);
+                return Promise.just(ListF.cons(iter.next(), iter));
             } else {
-                return ListF.nil();
+                return Promise.just(ListF.nil());
             }
-        }));
+        });
     }
 
     public LList(Promise<ListF<T, LList<T>>> promise) {
@@ -43,45 +45,55 @@ public class LList<T> {
         return unfix.map(listF -> listF.match(() -> null, (a, f) -> a));
     }
 
-    public Promise<LList<T>> tail() {
-        return unfix.map(listF -> listF.match(() -> null, (a, f) -> f));
+    public LList<T> tail() {
+        return LList.<T>bind(unfix.map(listF -> listF.match(() -> new LList<>(), (a, f) -> f)));
     }
 
-    public <R> LList<R> map(Function<T, R> func) {
-        return unfold(this, lList -> lList.unfix.map(promise -> promise.map(func)));
-        //return fold(p -> new LList<R>(p.map(listF -> listF.map(func))));
+    public <R> LList<R> map(Function<T, Promise<R>> func) {
+        return LList.bind(foldl(new LList<>(), (t, rs) -> func.apply(t).map(t$ -> new LList<R>(t$, rs))));
     }
 
     public static <S, T> LList<T> unfold(S s, Function<S, Promise<ListF<T, S>>> func) {
         return new LList<T>(s, func);
     }
 
-    public <R> LList<R> flatmap(Function<T, LList<R>> func) {
-        // TODO: implement
-        throw new UnsupportedOperationException();
+    public <R> LList<R> flatmap(Function<T, Promise<LList<R>>> func) {
+        Promise<LList<R>> out = this.map(func).foldl(new LList<>(), (llist, acc) -> Promise.just(llist.concat(acc)));
+        return LList.bind(out);
+    }
+
+    public LList<T> concat(LList<T> other) {
+        var out = unfix.bind(listF -> listF.match(() -> other.unfix, (head, tail) -> Promise.just(ListF.cons(head, tail.concat(other)))));
+        return new LList<>(out);
     }
 
     @SafeVarargs
     public static <R> LList<R> merge(LList<R>... lists) {
-        // TODO: implement
-        throw new UnsupportedOperationException();
+        return new LList<>(Arrays.asList(lists)).flatmap(LList::unbind);
     }
 
     public <R> Promise<Void> traverse(Function<T, Promise<Void>> consumer) {
-        return fold(null, (t, null$) -> {
+        return foldr(null, (t, null$) -> {
             return consumer.apply(t);
         });
     }
 
     public Promise<Collection<T>> collect() {
-        return fold(new ArrayList<>(), (t, out) -> {
+        return foldr(new ArrayList<>(), (t, out) -> {
             out.add(t);
             return Promise.just(out);
         });
     }
 
-    public <R> Promise<R> fold(R r, BiFunction<T, R, Promise<R>> func) {
-        return fold(p -> p.bind(listF -> listF.match(() -> Promise.just(r), (t, r$) -> r$.bind(r$$ -> func.apply(t, r$$)))));
+    public <R> Promise<R> foldr(R r, BiFunction<T, R, Promise<R>> func) {
+        return unfix.bind(listF -> listF.match(() -> Promise.just(r), (s, next) -> {
+            var cur = func.apply(s, r);
+            return cur.bind(t -> next.foldr(t, func));
+        }));
+    }
+
+    public <R> Promise<R> foldl(R r, BiFunction<T, R, Promise<R>> func) {
+        return fold(p -> p.bind(listF -> listF.match(() -> Promise.just(r), (s, next) -> next.bind(t -> func.apply(s, t)))));
     }
 
     public <R> R fold(Function<Promise<ListF<T, R>>, R> func) {
@@ -94,5 +106,25 @@ public class LList<T> {
 
     public Promise<Boolean> isEmpty() {
         return unfix.map(listF -> listF.match(() -> true, (t, f) -> false));
+    }
+
+    public LList<T> filter(Function<? super T, Promise<Boolean>> func) {
+        Promise<LList<T>> out = fold(p -> {
+            return p.bind(listF -> listF.match(() -> Promise.just(new LList<>()), (head, tail$) -> {
+                return func.apply(head).bind(condition -> {
+                    if (condition) {
+                        return tail$.map(tail -> new LList<T>(head, tail));
+                    } else {
+                        return tail$;
+                    }
+                });
+            }));
+        });
+
+        return LList.bind(out);
+    }
+
+    public Promise<LList<T>> unbind() {
+        return Promise.just(this);
     }
 }

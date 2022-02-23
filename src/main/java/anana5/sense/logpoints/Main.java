@@ -5,10 +5,7 @@ import java.nio.file.Files;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
-
-import com.google.common.collect.Lists;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,13 +18,9 @@ import net.sourceforge.argparse4j.impl.Arguments;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
 import net.sourceforge.argparse4j.inf.ArgumentParserException;
 import net.sourceforge.argparse4j.inf.Namespace;
-import polyglot.ast.Local;
 import soot.PackManager;
-import soot.PhaseOptions;
 import soot.Scene;
-import soot.SootMethodRef;
 import soot.jimple.Stmt;
-import soot.options.CGOptions;
 import soot.options.Options;
 
 public class Main {
@@ -99,7 +92,9 @@ public class Main {
 
         // cg options
         Options.v().setPhaseOption("cg.spark", "enabled:true");
-        Options.v().setPhaseOption("cg", "jdkver:11");
+        Options.v().setPhaseOption("cg.spark", "string-constants:true");
+        Options.v().setPhaseOption("cg", "jdkver:17");
+        Options.v().setPhaseOption("cg", "verbose:false");
 
         // trim cfgs
         Options.v().set_throw_analysis(Options.throw_analysis_unit);
@@ -119,41 +114,21 @@ public class Main {
 
         LocalDateTime start = LocalDateTime.now();
         logger.info("Started at {}.", start);
-        logger.info("Building callgraph.");
         PackManager.v().getPack("cg").apply();
 
 
-        GraphFactory factory = new GraphFactory();
+        GraphFactory factory = new GraphFactory(Scene.v().getCallGraph());
+
+        List<String> tags = ns.getList("tag");
+        for (String tag : tags) {
+            factory.tag(tag);
+        }
         
-        List<String> queries = ns.getList("tag");
-        factory.filter(v -> {
-            Stmt s = v.get();
-            boolean keep = false;
-
-            if (s.containsInvokeExpr()) {
-                SootMethodRef method = s.getInvokeExpr().getMethodRef();
-                String line = method.getDeclaringClass().getName() + "." + method.getName();
-                for (String query : queries) {
-                    if (line.contains(query)) {
-                        keep = true;
-                    }
-                }
-            }
-
-            if (keep) {
-                logger.trace("+ {}", v);
-            } else {
-                logger.trace("- {}", v);
-            }
-
-            return keep;
-        });
-        
-        Graph<Stmt> graph = factory.build(Scene.v().getCallGraph(), Scene.v().getEntryPoints());
+        Graph<Stmt> graph = factory.build(Scene.v().getEntryPoints());
 
         try (var printer = new DotPrinter(System.out, Main::format)) {
-            graph.traverse((v) -> {
-                printer.print(v.parent(), v);
+            graph.traverse((src, tgt) -> {
+                printer.print(src, tgt);
             });
         }
 
@@ -162,8 +137,12 @@ public class Main {
     }
 
     static String format(Vertex<Stmt> vertex) {
-        if (vertex.get().containsInvokeExpr()) {
-            return "(" + vertex.id() + ") " + vertex.get().getInvokeExpr().getMethodRef().getName() + vertex.get().getInvokeExpr().getArgs().toString();
+        if (vertex.value() == null) {
+            return "[root]";
+        }
+
+        if (vertex.value().containsInvokeExpr()) {
+            return "[" + vertex.hashCode() + "] " + vertex.value().getInvokeExpr().getMethodRef().getName() + vertex.value().getInvokeExpr().getArgs().toString();
         } else {
             return vertex.toString();
         }

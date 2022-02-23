@@ -4,30 +4,10 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+@FunctionalInterface
 public interface Computation<T> {
 
     Continuation accept(Callback<T> k);
-
-    static <T> Computation<T> of(Supplier<T> supplier) {
-        return pure(supplier);
-    }
-
-    default Computation<T> then(Consumer<T> f) {
-        return new SideEffect<>(f, this);
-    }
-
-    static class SideEffect<T> implements Computation<T> {
-        final Consumer<T> f;
-        final Computation<T> c;
-        SideEffect(Consumer<T> f, Computation<T> c) {
-            this.f = f;
-            this.c = c;
-        }
-        @Override
-        public Continuation accept(Callback<T> k) {
-            return Continuation.accept(c, k.then(f));
-        }
-    }
 
     static <T> Computation<T> nil() {
         return new Nil<>();

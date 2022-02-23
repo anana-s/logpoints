@@ -5,12 +5,10 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.management.RuntimeErrorException;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class Example {
+public class ExceptionalForLoop {
     @FunctionalInterface
     interface ICallBack {
         public void accept(String s) throws IOException;
@@ -20,7 +18,7 @@ public class Example {
     
     List<ICallBack> callbacks = new ArrayList<>();
 
-    public Example() {
+    public ExceptionalForLoop() {
         logger.debug("initialized");
     }
 
@@ -49,7 +47,6 @@ public class Example {
         logger.info("started {}", LocalDateTime.now());
         Example o = new Example();
         o.add(phrase -> logger.info("call {}", phrase));
-        o.add(phrase -> logger.info("call {}", phrase));
         if (args.length != 0) {
             logger.error("wrong number of args");
             System.exit(1);
@@ -65,4 +62,5 @@ public class Example {
         }
         logger.info("done {}", LocalDateTime.now());
     }
+
 }
