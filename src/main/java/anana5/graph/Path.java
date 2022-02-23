@@ -1,4 +1,4 @@
-package anana5.sense.graph;
+package anana5.graph;
 
 import java.util.function.Function;
 

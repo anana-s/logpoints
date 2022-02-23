@@ -7,35 +7,35 @@ import java.util.function.Function;
 
 import org.apache.commons.text.StringEscapeUtils;
 
-import anana5.sense.graph.Rainfall.Droplet;
+import anana5.graph.Vertex;
 import soot.jimple.Stmt;
 
 public class DotPrinter implements AutoCloseable {
-    Map<Droplet<Stmt, ?>.SnowFlake, String> discovered;
+    Map<Vertex<Stmt>, String> discovered;
     PrintStream out;
-    Function<Droplet<Stmt, ?>.SnowFlake, String> formatter;
+    Function<Vertex<Stmt>, String> formatter;
 
-    DotPrinter(PrintStream out, Function<Droplet<Stmt, ?>.SnowFlake, String> formatter) {
+    DotPrinter(PrintStream out, Function<Vertex<Stmt>, String> formatter) {
         this.discovered = new HashMap<>();
         this.out = out;
         this.out.println("digraph {");
+        this.out.println("    edge [style=bold]");
+        this.out.println("    node [shape=box, style=\"rounded,bold\", fontname=\"helvetica\"]");
         this.formatter = formatter;
     }
     
-    public String discover(Droplet<Stmt, ?>.SnowFlake o) {
-        if (o == null) {
-            return "root";
-        }
+    public String discover(Vertex<Stmt> o) {
         if (discovered.containsKey(o)) {
             return discovered.get(o);
         }
         String repr = "\"" + StringEscapeUtils.escapeJava(formatter.apply(o)) + "\"";
         discovered.put(o, repr);
+        out.println("    " + repr);
         return repr;
     }
 
-    public void print(Droplet<Stmt, ?>.SnowFlake from, Droplet<Stmt, ?>.SnowFlake to) {
-        StringBuilder s = new StringBuilder();
+    public void print(Vertex<Stmt> from, Vertex<Stmt> to) {
+        StringBuilder s = new StringBuilder("    ");
         s.append(discover(from));
         s.append(" -> ");
         s.append(discover(to));
