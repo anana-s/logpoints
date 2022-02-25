@@ -40,26 +40,44 @@ public interface Computation<T> {
         return new Pure<>(supplier);
     }
 
-    static class Pure<R> implements Computation<R> {
-        final Supplier<R> r;
-        Pure(Supplier<R> r) {
+    static class Pure<T> implements Computation<T> {
+        final Supplier<T> r;
+        Pure(Supplier<T> r) {
             this.r = r;
         }
 
         @Override
-        public Continuation accept(Callback<R> k) {
+        public Continuation accept(Callback<T> k) {
             return Continuation.apply(k, r.get());
         }
     }
 
-    default <R> Computation<R> map(Function<T, R> f) {
+    default Computation<T> effect(Consumer<T> consumer) {
+        return new SideEffect<>(consumer, this);
+    }
+
+    static class SideEffect<T> implements Computation<T> {
+        final Consumer<T> consumer;
+        final Computation<T> computation;
+        SideEffect(Consumer<T> consumer, Computation<T> computation) {
+            this.consumer = consumer;
+            this.computation = computation;
+        }
+
+        @Override
+        public Continuation accept(Callback<T> k) {
+            return Continuation.accept(computation, k.effect(consumer));
+        }
+    }
+
+    default <R> Computation<R> map(Function<? super T, ? extends R> f) {
         return new Mapping<>(f, this);
     }
 
     static class Mapping<T, R> implements Computation<R> {
-        final Function<T, R> f;
-        final Computation<T> c;
-        Mapping(Function<T, R> f, Computation<T> c) {
+        final Function<? super T, ? extends R> f;
+        final Computation<? extends T> c;
+        Mapping(Function<? super T, ? extends R> f, Computation<? extends T> c) {
             this.f = f;
             this.c = c;
         }
@@ -69,14 +87,14 @@ public interface Computation<T> {
         }
     }
 
-    default <R> Computation<R> apply(Computation<Function<T, R>> f) {
+    default <R> Computation<R> apply(Computation<? extends Function<? super T, ? extends R>> f) {
         return new Application<>(f, this);
     }
 
     static class Application<T, R> implements Computation<R> {
-        final Computation<Function<T, R>> f;
-        final Computation<T> c;
-        Application(Computation<Function<T, R>> f, Computation<T> c) {
+        final Computation<? extends Function<? super T, ? extends R>> f;
+        final Computation<? extends T> c;
+        Application(Computation<? extends Function<? super T, ? extends R>> f, Computation<? extends T> c) {
             this.f = f;
             this.c = c;
         }
@@ -86,68 +104,68 @@ public interface Computation<T> {
         }
     }
 
-    default <S> Computation<S> bind(Function<T, Computation<S>> f) {
+    default <S> Computation<S> bind(Function<? super T, ? extends Computation<S>> f) {
         return new Binding<T, S>(f, this);
     }
 
     static class Binding<T, R> implements Computation<R> {
-        Function<T, Computation<R>> f;
-        Computation<T> c;
-        Binding(Function<T, Computation<R>> f, Computation<T> c) {
+        Function<? super T, ? extends Computation<R>> f;
+        Computation<? extends T> c;
+        Binding(Function<? super T, ? extends Computation<R>> f, Computation<? extends T> c) {
             this.f = f;
             this.c = c;
         }
         @Override
         public Continuation accept(Callback<R> k) {
-            return new Continuation.Visit<>(c, k.bind(f));
+            return Continuation.accept(c, k.bind(f));
         }
     }
 
-    interface Callback<T> {
-        Continuation accept(T t);
+    interface Callback<S> {
+        Continuation accept(S t);
 
-        static <T> Callback<T> pure(Consumer<T> f) {
+        static <S> Callback<S> pure(Consumer<? super S> f) {
             return new Pure<>(f);
         }
 
-        static class Pure<T> implements Callback<T> {
-            final Consumer<T> f;
-            Pure(Consumer<T> f) {
+        static class Pure<S> implements Callback<S> {
+            final Consumer<? super S> f;
+            Pure(Consumer<? super S> f) {
                 this.f = f;
             }
             @Override
-            public Continuation accept(T t) {
+            public Continuation accept(S t) {
                 f.accept(t);
                 return null;
             }
         }
 
-        default Callback<T> then(Consumer<T> f) {
+        default Callback<S> effect(Consumer<S> f) {
             return new SideEffect<>(f, this);
         }
 
-        static class SideEffect<T> implements Callback<T> {
-            final Consumer<T> f;
-            final Callback<T> k;
-            SideEffect(Consumer<T> f, Callback<T> k) {
+        static class SideEffect<S> implements Callback<S> {
+            final Consumer<S> f;
+            final Callback<S> k;
+            SideEffect(Consumer<S> f, Callback<S> k) {
                 this.f = f;
                 this.k = k;
             }
             @Override
-            public Continuation accept(T t) {
+            public Continuation accept(S t) {
                 f.accept(t);
                 return Continuation.apply(k, t);
             }
         }
 
-        default <S> Callback<S> map(Function<S, T> f) {
+        default <T> Callback<T> map(Function<? super T, ? extends S> f) {
             return new Mapping<>(f, this);
         }
 
         static class Mapping<T, S> implements Callback<T> {
-            final Function<T, S> f;
-            final Callback<S> k;
-            Mapping(Function<T, S> f, Callback<S> k) {
+            final Function<? super T, ? extends S> f;
+            final Callback<? super S> k;
+            Mapping(Function<? super T, ? extends S> f, Callback<? super S> k) {
                 this.f = f;
                 this.k = k;
             }
@@ -156,14 +174,14 @@ public interface Computation<T> {
             };
         }
 
-        default <R> Callback<R> apply(Computation<Function<R, T>> f) {
+        default <R> Callback<R> apply(Computation<? extends Function<? super R, ? extends S>> f) {
             return new Application<>(f, this);
         }
 
         static class Application<T, R> implements Callback<T> {
-            final Computation<Function<T, R>> f;
-            final Callback<R> k;
-            Application(Computation<Function<T, R>> f, Callback<R> k) {
+            final Computation<? extends Function<? super T, ? extends R>> f;
+            final Callback<? super R> k;
+            Application(Computation<? extends Function<? super T, ? extends R>> f, Callback<? super R> k) {
                 this.f = f;
                 this.k = k;
             }
@@ -173,14 +191,14 @@ public interface Computation<T> {
             }
         }
 
-        default <S> Callback<S> bind(Function<S, Computation<T>> f) {
+        default <T> Callback<T> bind(Function<? super T, ? extends Computation<S>> f) {
             return new Binding<>(f, this);
         }
 
         static class Binding<T, S> implements Callback<T> {
-            final Function<T, Computation<S>> f;
+            final Function<? super T, ? extends Computation<S>> f;
             final Callback<S> k;
-            Binding(Function<T, Computation<S>> f, Callback<S> k) {
+            Binding(Function<? super T, ? extends Computation<S>> f, Callback<S> k) {
                 this.f = f;
                 this.k = k;
             }
@@ -210,13 +228,13 @@ public interface Computation<T> {
             }
         }
     
-        static <T> Continuation apply(Callback<T> k, T t) {
+        static <T> Continuation apply(Callback<? super T> k, T t) {
             return new Application<>(k, t);
         }
         static class Application<T> implements Continuation {
-            final Callback<T> k;
+            final Callback<? super T> k;
             final T t;
-            Application(Callback<T> k, T t) {
+            Application(Callback<? super T> k, T t) {
                 this.k = k;
                 this.t = t;
             }
@@ -227,13 +245,7 @@ public interface Computation<T> {
         }
     }
 
-    default T run() {
-        var result = new Object() { T value; };
-        run(t -> result.value = t);
-        return result.value;
-    }
-
-    default void run(Consumer<T> f) {
+    default void run(Consumer<? super T> f) {
         Continuation a = this.accept(Callback.pure(f));
         while (a != null) {
             a = a.next();

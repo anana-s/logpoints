@@ -1,44 +1,36 @@
 package anana5.sense.logpoints;
 
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import anana5.graph.Box;
-import anana5.graph.DirectedEdge;
-import anana5.graph.Graph;
-import anana5.graph.Vertex;
 import anana5.graph.rainfall.Droplet;
 import anana5.graph.rainfall.Rain;
 import anana5.util.LList;
-import anana5.util.ListF;
+import anana5.util.Path;
 import anana5.util.Promise;
 import soot.SootMethod;
-import soot.Unit;
 import soot.jimple.Stmt;
 import soot.jimple.toolkits.callgraph.CallGraph;
-import soot.jimple.toolkits.callgraph.Edge;
 import soot.toolkits.graph.ExceptionalUnitGraph;
 
 public class GraphFactory {
 
     static Logger logger = LoggerFactory.getLogger(GraphFactory.class);
+    
 
     CallGraph cg;
     List<Pattern> tags = new ArrayList<>();
+    Map<SootMethod, Rain<Stmt>> visited = new HashMap<>();
 
     public GraphFactory(CallGraph cg) {
         this.cg = cg;
@@ -64,56 +56,57 @@ public class GraphFactory {
     }
 
     public Rain<Stmt> build(Iterable<SootMethod> entrypoints) {
-        return build(new LList<>(entrypoints), new Rain<>());
+        return build(new LList<>(entrypoints), new Path<>(), new HashSet<>());
     }
 
-    private Rain<Stmt> build(LList<SootMethod> methods, Rain<Stmt> rets) {
-
-        methods = methods.filter(m -> {
-            if (!m.isPhantom() && m.isConcrete() && !m.isJavaLibraryMethod() && !m.getDeclaringClass().isLibraryClass()) {
-                return Promise.just(true);
-            } else {
-                logger.trace("{} skipped", m);
-                return Promise.just(false);
-            }
-        });
-
-        var rain = Rain.merge(methods.map(m -> Promise.just(build(m))));
-
-        // create new context
-        rain = rain.fold(droplets -> {
-            return Rain.bind(droplets.isEmpty().map(condition -> {
-                if (condition) {
-                    return rets;
+    private Rain<Stmt> build(LList<SootMethod> methods, Path<SootMethod> path, Set<SootMethod> CGGuards) {
+        // construct subrain for each method
+        return Rain.merge(methods.map(method -> {
+            if (visited.containsKey(method)) {
+                var rain = visited.get(method);
+                if (path.contains(method)) {
+                    if (CGGuards.contains(method)) {
+                        // break empty cycle
+                        logger.trace("{} skipped due to closing empty loop", method);
+                        return new Rain<>();
+                    } else {
+                        logger.trace("{} loaded from cache", method);
+                        return rain;
+                    }
                 } else {
-                    return new Rain<>(droplets);
+                    // map to new boxes
+                    logger.trace("{} loaded from cache in new context", method);
+                    return rain.map(Function.identity());
                 }
-            }));
-        });
-
-        return rain;
-    }
-
-    Map<SootMethod, Rain<Stmt>> visited = new HashMap<>();
-    private Rain<Stmt> build(SootMethod method) {
-        return visited.compute(method, (m, rain) -> {
-            if (rain != null) {
-                logger.trace("{} loaded from cache.", method);
-                // map to new boxes
-                return rain.map(box -> new Box<>(box.value()));
             }
+
+            if (method.isPhantom()){
+                logger.trace("{} skipped due to being phantom", method);
+                return new Rain<>();
+            }
+            
+            if (!method.isConcrete()) {
+                logger.trace("{} skipped due to not being concrete", method);
+                return new Rain<>();
+            } 
+            
+            if (method.getDeclaringClass().isLibraryClass()) {
+                logger.trace("{} skipped due to being library method", method);
+                return new Rain<>();
+            }
+
             var builder = new CFGFactory(method);
-            var out = Promise.effect(() -> {
-                logger.trace("building {}", method);
-            }).then(($) -> Promise.just(builder.build()));
-            return Rain.bind(out);
-        });
+            logger.trace("{} loaded", method);
+            CGGuards.add(method);
+            var rain = builder.build(path.push(method), CGGuards);
+            visited.put(method, rain);
+            return rain;
+        }));
     }
 
     class CFGFactory {
         SootMethod method;
-        Map<Stmt, Droplet<Stmt, Rain<Stmt>>> visited;
-        Set<Stmt> skip;
+        Map<Stmt, Rain<Stmt>> visited;
         ExceptionalUnitGraph cfg;
         CFGFactory(SootMethod method) {
             this.method = method;
@@ -121,65 +114,96 @@ public class GraphFactory {
             this.cfg = new ExceptionalUnitGraph(method.retrieveActiveBody());
         }
 
-        Rain<Stmt> build() {
-            return filter(build(new LList<>(cfg.getHeads()).map(unit -> Promise.just((Stmt)unit))), new HashSet<>(), new HashMap<>());
+        Rain<Stmt> build(Path<SootMethod> path, Set<SootMethod> CGGuards) {
+            return build(new LList<>(cfg.getHeads()).map(unit -> (Stmt)unit), new HashSet<>(), path, CGGuards);
         }
 
-        private Rain<Stmt> filter(Rain<Stmt> rain, Set<Box<Stmt>> guards, Map<Box<Stmt>, Rain<Stmt>> cache) {
-            return Rain.merge(rain.unfix().map(drop -> Promise.pure(() -> {
-                var box = drop.get();
-                if (guards.contains(box)) {
+        private Rain<Stmt> build(LList<Stmt> stmts, Set<Stmt> CFGGuards, Path<SootMethod> path, Set<SootMethod> CGGuards) {
+            // build rain for each stmt and merge
+            return Rain.merge(stmts.map(stmt -> {
+                if (CFGGuards.contains(stmt)) {
                     // break empty cycle
-                    return new Rain<>();
+                    logger.trace("{} [{}] is closing an empty loop", method, stmt);
+                    return new Rain<Stmt>();
                 }
-
-                if (cache.containsKey(box)) {
+                
+                if (visited.containsKey(stmt)) {
                     // return from cache;
-                    return cache.get(box);
+                    logger.trace("{} [{}] loaded from cache", method, stmt);
+                    return visited.get(stmt);
                 }
 
-                var stmt = box.value();
+                //TODO handle exceptional dests;
+
+                var sucs = cfg.getUnexceptionalSuccsOf(stmt);
+                var rets = new LList<>(sucs).map(unit -> (Stmt)unit);
+    
                 if (stmt.containsInvokeExpr()) {
                     var methodRef = stmt.getInvokeExpr().getMethodRef();
                     var declaringClass = methodRef.getDeclaringClass();
                     String methodName = declaringClass.getName() + "." + methodRef.getName();
                     for (Pattern pattern : GraphFactory.this.tags) {
                         if (pattern.matcher(methodName).find()) {
-                            var out = new Rain<>(drop.fmap(let -> filter(let, new HashSet<>(), cache)));
-                            cache.put(box, out);
-                            return out;
+                            // clear guards and make new droplet
+                            var drop = new Droplet<>(stmt, build(rets, new HashSet<>(), path, new HashSet<>()));
+                            var rain = new Rain<>(drop);
+                            visited.put(stmt, rain);
+                            logger.trace("{} [{}] reported with {} successors", method, stmt, sucs.size());
+                            return rain;
                         }
                     }
-                }
 
-                logger.trace("{} [{}] skipped", this.method, stmt);
-                guards.add(box);
-                return filter(drop.next(), guards, cache);
-            })));
+                    // get subrain
+                    var methods = new LList<>(cg.edgesOutOf(stmt)).map(edge -> edge.tgt());
+                    var subrain = GraphFactory.this.build(methods, path, CGGuards);
+
+                    // check if empty, if so, add guard.
+                    // connect return values
+                    var rain = Rain.bind(subrain.isEmpty().then(isEmpty ->{
+                        if (isEmpty) {
+                            CFGGuards.add(stmt);
+                            return Promise.just(build(rets, CFGGuards, path, CGGuards));
+                        } else {
+                            // clear guards
+                            logger.trace("cg guards cleared");
+                            logger.trace("{} cfg guards cleared", method);
+                            var r = build(rets, new HashSet<>(), path, new HashSet<>());
+                            var s = subrain.fold(droplets -> {
+                                return Rain.bind(droplets.isEmpty().map(condition -> {
+                                    if (condition) {
+                                        return r;
+                                    } else {
+                                        return new Rain<>(droplets);
+                                    }
+                                }));
+                            });
+                            return Promise.just(s);
+                        }
+                    }));
+                    visited.put(stmt, rain);
+                    logger.trace("{} [{}] expanded with {} successors", method, stmt, sucs.size());
+                    return rain;
+                } else {
+                    CFGGuards.add(stmt);
+                    var rain = build(rets, CFGGuards, path, CGGuards);
+                    rain = deduplicate(rain);
+                    visited.put(stmt, rain);
+                    logger.trace("{} [{}] skipped with {} successors", method, stmt, sucs.size());
+                    return rain;
+                }
+            }));
         }
 
-        private Rain<Stmt> build(LList<Stmt> stmts) {
-            // build rain for each stmt and merge
-            return new Rain<>(stmts.map(stmt -> Promise.pure(() -> {
-                return visited.compute(stmt, ($, drop) -> {
-                    if (drop != null) {
-                        logger.trace("{} [{}] loaded from cache", this.method, stmt);
-                        return drop;
-                    }
-
-                    //TODO handle exceptional dests;
-    
-                    var sucs = cfg.getUnexceptionalSuccsOf(stmt);
-                    var rets = build(new LList<>(sucs).map(unit -> Promise.just((Stmt)unit)));
-        
-                    if (stmt.containsInvokeExpr()) {
-                        var methods = new LList<>(cg.edgesOutOf(stmt)).map(edge -> Promise.just(edge.tgt()));
-                        logger.trace("{} [{}] expanded with {} successors", this.method, stmt, sucs.size());
-                        rets = GraphFactory.this.build(methods, rets);
-                    }
-                    return new Droplet<>(new Box<>(stmt), rets);
-                });
-            })));
+        Rain<Stmt> deduplicate(Rain<Stmt> rain) {
+            Set<Box<Stmt>> seen = new HashSet<>();
+            return Rain.bind(rain.unfix().foldr(new LList<Droplet<Stmt, Rain<Stmt>>>(), (drop, let) -> {
+                var box = drop.get();
+                if (seen.contains(box)) {
+                    return let;
+                }
+                seen.add(box);
+                return new LList<>(drop, let);
+            }).then(let -> Promise.just(new Rain<Stmt>(let))));
         }
     }
 }

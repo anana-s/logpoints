@@ -9,8 +9,6 @@ public class IteratorLoopInvocation {
     public static void main(String[] args) {
         for (String arg : Arrays.asList(args)) {
             print(arg);
-            print(arg);
-            print(arg);
         }
         print("sweet pineapple");
     }

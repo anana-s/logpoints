@@ -11,6 +11,7 @@ import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 import anana5.graph.Box;
 import anana5.graph.Graph;
@@ -23,10 +24,10 @@ import anana5.util.Promise;
  */
 public class Rain<T> implements Graph<T> {    
     
-    final private LList<Droplet<T, Rain<T>>> droplets;
+    final private LList<Droplet<T, Rain<T>>> unfix;
 
     public LList<Droplet<T, Rain<T>>> unfix() {
-        return this.droplets;
+        return this.unfix;
     }
 
     @SafeVarargs
@@ -35,7 +36,7 @@ public class Rain<T> implements Graph<T> {
     }
 
     public Rain(Rain<T> other) {
-        this.droplets = other.droplets;
+        this.unfix = other.unfix;
     }
     
     public Rain(Iterable<Droplet<T, Rain<T>>> droplets) {
@@ -43,11 +44,11 @@ public class Rain<T> implements Graph<T> {
     }
 
     public <S> Rain(S s, Function<S, LList<Droplet<T, S>>> func) {
-        this(func.apply(s).map(droplet -> Promise.just(droplet.fmap(let -> new Rain<>(let, func)))));
+        this(func.apply(s).map(droplet -> droplet.fmap(let -> new Rain<>(let, func))));
     }
     
     public Rain(LList<Droplet<T, Rain<T>>> droplets) {
-        this.droplets = droplets;
+        this.unfix = droplets;
     }
 
     
@@ -55,7 +56,7 @@ public class Rain<T> implements Graph<T> {
      * @return Promise<Collection<Droplet<T, Rain<T>>>>
      */
     public Promise<Collection<Droplet<T, Rain<T>>>> collect() {
-        return droplets.collect();
+        return unfix.collect();
     }
 
     /** 
@@ -63,7 +64,7 @@ public class Rain<T> implements Graph<T> {
      * @return R
      */
     public <R> R fold(Function<LList<Droplet<T, R>>, R> func) {
-        return func.apply(droplets.map(drop -> Promise.pure(() -> drop.fmap(let -> let.fold(func)))));
+        return func.apply(unfix.map(drop -> drop.fmap(let -> let.fold(func))));
     }
 
     
@@ -79,29 +80,23 @@ public class Rain<T> implements Graph<T> {
      * @param func
      * @return Rain<R>
      */
-    public <R> Rain<R> map(Function<Box<T>, Box<R>> func) {
+    public <R> Rain<R> map(Function<T, R> func) {
         Map<Box<T>, Droplet<R, Rain<R>>> cache = new HashMap<>();
-        return this.fold(droplets -> new Rain<R>(droplets.map(drop -> Promise.just(cache.computeIfAbsent(drop.get(), box -> new Droplet<>(func.apply(drop.get()), drop.next()))))));
+        return this.fold(droplets -> new Rain<R>(droplets.map(drop -> cache.computeIfAbsent(drop.get(), box -> new Droplet<>(func.apply(box.value()), drop.next())))));
     }
 
     @Override
     public void traverse(Consumer<Vertex<T>> consumer) {
-        Promise<Void> task = traverse((source, target) -> {
+        traverse((source, target) -> {
             consumer.accept(target);
-            return Promise.nil();
         });
-
-        task.run();
     }
 
     @Override
     public void traverse(BiConsumer<Vertex<T>, Vertex<T>> consumer) {
-        Promise<Void> task = traverse((source, target) -> {
+        traversal((source, target) -> {
             consumer.accept(source, target);
-            return Promise.nil();
-        });
-
-        task.run();
+        }).join();
     }
 
     
@@ -109,8 +104,8 @@ public class Rain<T> implements Graph<T> {
      * @param visitor
      * @return Promise<Void>
      */
-    public Promise<Void> traverse(BiFunction<Vertex<T>, Vertex<T>, Promise<Void>> visitor) {
-        return traverse(new Box<>(null), visitor, new HashSet<>());
+    public Promise<Void> traversal(BiConsumer<Vertex<T>, Vertex<T>> visitor) {
+        return traversal(new Box<>(null), visitor, new HashSet<>());
     }
 
     
@@ -118,16 +113,17 @@ public class Rain<T> implements Graph<T> {
      * @param visitor
      * @return Promise<Void>
      */
-    private Promise<Void> traverse(Box<T> source, BiFunction<Vertex<T>, Vertex<T>, Promise<Void>> visitor, Set<Box<T>> cache) {
-        return droplets.traverse((droplet) -> {
+    private Promise<Void> traversal(Box<T> source, BiConsumer<Vertex<T>, Vertex<T>> visitor, Set<Box<T>> visited) {
+        return unfix.foldr(Promise.<Void>nil(), (droplet, p) -> {
             var target = droplet.get();
-            if (cache.contains(target)) {
-                return visitor.apply(source, target);
+            if (visited.contains(target)) {
+                visitor.accept(source, target);
+                return p.then($ -> Promise.nil());
             }
-            cache.add(target);
-            var rain = droplet.next();
-            return visitor.apply(source, target).then((void$) -> rain.traverse(target, visitor, cache));
-        });
+            visited.add(target);
+            visitor.accept(source, target);
+            return p.then($ -> droplet.next().traversal(target, visitor, visited));
+        }).bind(Function.<Promise<Void>>identity());
     }
 
     
@@ -140,27 +136,37 @@ public class Rain<T> implements Graph<T> {
         @SuppressWarnings("unchecked")
         LList<Droplet<T, Rain<T>>>[] droplets = new LList[rain.length];
         for (int i = 0; i < rain.length; i++) {
-            droplets[i] = rain[i].droplets;
+            droplets[i] = rain[i].unfix;
         }
         return new Rain<>(LList.merge(droplets));
     }
 
     public static <T> Rain<T> merge(LList<Rain<T>> rains) {
-        return new Rain<>(rains.flatmap(r -> r.droplets.unbind()));
+        return new Rain<>(rains.flatmap(r -> r.unfix));
     }
 
     public static <T> Rain<T> bind(Promise<Rain<T>> promise) {
-        return new Rain<>(LList.bind(promise.map(rain -> rain.droplets)));
+        return new Rain<>(LList.bind(promise.map(rain -> rain.unfix)));
     }
 
     public Promise<Boolean> isEmpty() {
-        return droplets.isEmpty();
+        return unfix.isEmpty();
     }
 
     public Rain<T> filter(Predicate<Box<T>> predicate) {
         var droplets = unfix().filter(droplet -> Promise.just(predicate.test(droplet.get())));
-        droplets = droplets.map(droplet -> Promise.just(droplet.fmap(let -> let.filter(predicate))));
+        droplets = droplets.map(droplet -> droplet.fmap(let -> let.filter(predicate)));
         return new Rain<>(droplets);
     }
-    
+
+    public boolean resolved() {
+        return fold(llist -> llist.fold(p -> p.resolved() && p.get().match(() -> true, (t, f) -> t.next() && f)));
+    }
+
+    public Promise<Rain<T>> join() {
+        BiFunction<Droplet<T, Promise<Void>>, Promise<Void>, Promise<Void>> func = (drop, tail) -> drop.next().then($ -> tail);
+        Supplier<Promise<Void>> supp = () -> Promise.nil();
+        var promise = fold(llist -> llist.fold(p -> p.then(listF -> listF.match(supp, func))));
+        return promise.map($ -> this);
+    }
 }

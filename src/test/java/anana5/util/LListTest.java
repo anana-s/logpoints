@@ -15,8 +15,14 @@ class LListTest {
 
     @Test
     void foldr() {
-        var actual = a.foldr(0, (a, b) -> Promise.just(a + b)).run();
-        assertEquals(6, actual);
+        var actual = LList.bind(a.foldr(LList.nil(), (a, b) -> LList.cons(a, b))).collect().join();
+        assertEquals(Arrays.asList(3, 2, 1), actual);
+    }
+
+    @Test
+    void foldl() {
+        var actual = LList.bind(a.foldl(LList.nil(), (a, b) -> LList.cons(a, b))).collect().join();
+        assertEquals(Arrays.asList(1, 2, 3), actual);
     }
 
     @Test
@@ -24,7 +30,7 @@ class LListTest {
         a.collect().bind(actual -> {
             assertEquals(Arrays.asList(1, 2, 3), actual);
             return Promise.<Void>nil();
-        }).run();
+        }).join();
     }
 
     @Test
@@ -32,15 +38,15 @@ class LListTest {
         LList.merge(a, b).collect().then(r$ -> {
             assertEquals(Arrays.asList(1, 2, 3, 4, 5, 6), r$);
             return Promise.<Void>nil();
-        }).run();
+        }).join();
     }
 
     @Test
     void flatmap() {
-        c.flatmap(LList::unbind).collect().then(actual -> {
+        c.flatmap(Function.identity()).collect().then(actual -> {
             assertEquals(Arrays.asList(1, 2, 3, 4, 5, 6), actual);
             return Promise.just(true);
-        }).run();
+        }).join();
     }
 
     @Test
@@ -49,6 +55,6 @@ class LListTest {
         out.collect().bind(actual -> {
             assertEquals(Arrays.asList(1,3), actual);
             return Promise.nil();
-        }).run();
+        }).join();
     }
 }

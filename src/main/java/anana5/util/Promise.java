@@ -7,8 +7,8 @@ import java.util.function.Supplier;
 import anana5.util.function.Effect;
 
 public class Promise<T> implements Computation<T> {
-    boolean resolved;
-    T value;
+    private boolean resolved;
+    private T value;
 
     static class Unresolved extends RuntimeException {
         Promise<?> promise;
@@ -63,11 +63,16 @@ public class Promise<T> implements Computation<T> {
         }
         @Override
         public Continuation accept(Callback<T> k) throws Unresolved {
-            if (resolved) {
-                return Continuation.apply(k, value);
+            if (resolved()) {
+                return Continuation.apply(k, this.get());
             } else {
-                return Continuation.accept(c, k.then(this::resolve));
+                return Continuation.accept(c, k.effect(this::resolve));
             }
+        }
+        @Override
+        public void resolve(T t) {
+            super.resolve(t);
+            c = null;
         }
     }
 
@@ -79,35 +84,48 @@ public class Promise<T> implements Computation<T> {
             throw new Unresolved(this);
         }
     }
+
     @Override
-    public <R> Promise<R> map(Function<T, R> f) {
+    public Promise<T> effect(Consumer<T> consumer) {
+        return Promise.from(Computation.super.effect(consumer));
+    }
+
+    @Override
+    public <R> Promise<R> map(Function<? super T, ? extends R> f) {
         return Promise.from(Computation.super.map(f));
     }
+    
     @Override
-    public <R> Promise<R> apply(Computation<Function<T, R>> f) {
+    public <R> Promise<R> apply(Computation<? extends Function<? super T, ? extends R>> f) {
         return Promise.from(Computation.super.apply(f));
     }
+    
     @Override
-    public <S> Promise<S> bind(Function<T, Computation<S>> f) {
+    public <S> Promise<S> bind(Function<? super T, ? extends Computation<S>> f) {
         return then(f);
     }
-    public <S> Promise<S> then(Function<T, Computation<S>> f) {
+    
+    public <S> Promise<S> then(Function<? super T, ? extends Computation<S>> f) {
         return Promise.from(Computation.super.bind(f));
     }
+    
     public static <T> Promise<T> nil() {
         return Promise.from(Computation.nil());
     }
+    
     public boolean resolved() {
         return this.resolved;
     }
-    @Override
-    public T run() {
+    
+    public T join() {
         Computation.super.run(this::resolve);
-        assert resolved == true;
         return value;
     }
-    @Override
-    public void run(Consumer<T> f) {
-        f.accept(this.run());
+    
+    public T get() throws Unresolved {
+        if (!resolved) {
+            throw new Unresolved(this);
+        };
+        return value;
     }
 }

@@ -1,6 +1,7 @@
 package anana5.sense.logpoints;
 
 import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.file.Files;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -53,6 +54,11 @@ public class Main {
             .setDefault(new ArrayList<>())
             .action(Arguments.append());
 
+        parser.addArgument("-o", "--output")
+            .nargs("?")
+            .type(PrintStream.class)
+            .setDefault(System.out);
+
         parser.addArgument("classes").nargs("+");
 
 
@@ -93,7 +99,9 @@ public class Main {
         // cg options
         Options.v().setPhaseOption("cg.spark", "enabled:true");
         Options.v().setPhaseOption("cg.spark", "string-constants:true");
-        Options.v().setPhaseOption("cg", "jdkver:17");
+        Options.v().setPhaseOption("cg", "safe-forname:false");
+        Options.v().setPhaseOption("cg", "safe-newinstance:false");
+        Options.v().setPhaseOption("cg", "jdkver:11");
         Options.v().setPhaseOption("cg", "verbose:false");
 
         // trim cfgs
@@ -110,30 +118,34 @@ public class Main {
         Options.v().classes().addAll(classes);
         Options.v().set_main_class(classes.get(classes.size() - 1));
 
-        Scene.v().loadNecessaryClasses();
-
         LocalDateTime start = LocalDateTime.now();
         logger.info("Started at {}.", start);
+        Runnable exitHook = () -> {
+            LocalDateTime end = LocalDateTime.now();
+            logger.info("Done in {} iterations ({}) at {}.", Computation.statistics.iterations(), Duration.between(end, start), end);
+        };
+        Runtime.getRuntime().addShutdownHook(new Thread(exitHook, "exit"));
+
+        // load classes
+        Scene.v().loadNecessaryClasses();
+
+        // construct cg
         PackManager.v().getPack("cg").apply();
 
-
-        GraphFactory factory = new GraphFactory(Scene.v().getCallGraph());
-
+        // construct graph
         List<String> tags = ns.getList("tag");
+        GraphFactory factory = new GraphFactory(Scene.v().getCallGraph());
         for (String tag : tags) {
             factory.tag(tag);
         }
-        
         Graph<Stmt> graph = factory.build(Scene.v().getEntryPoints());
 
-        try (var printer = new DotPrinter(System.out, Main::format)) {
+        // traverse graph
+        try (var printer = new DotPrinter(ns.get("output"), Main::format)) {
             graph.traverse((src, tgt) -> {
                 printer.print(src, tgt);
             });
         }
-
-        LocalDateTime end = LocalDateTime.now();
-        logger.info("Done in {} iterations ({}) at {}.", Computation.statistics.iterations(), Duration.between(end, start), end);
     }
 
     static String format(Vertex<Stmt> vertex) {

@@ -5,22 +5,26 @@ import java.util.function.Function;
 
 import anana5.graph.Box;
 
-public class Droplet<A, F> {
+public class Droplet<T, F> {
 
-    final private Box<A> box;
+    final private Box<T> box;
     final private F f;
 
-    public Droplet(Box<A> box, F next) {
+    public Droplet(T value, F next) {
+        this(new Box<>(value), next);
+    }
+
+    private Droplet(Box<T> box, F next) {
         this.box = box;
         this.f = next;
     }
 
-    public Droplet(Droplet<A, F> droplet) {
+    public Droplet(Droplet<T, F> droplet) {
         this.box = droplet.box;
         this.f = droplet.f;
     }
 
-    public Box<A> get() {
+    public Box<T> get() {
         return this.box;
     }
 
@@ -28,11 +32,15 @@ public class Droplet<A, F> {
         return this.f;
     }
 
-    public <G> Droplet<A, G> fmap(Function<F, G> func) {
+    public <S> Droplet<S, F> map(Function<T, S> func) {
+        return new Droplet<>(new Box<>(func.apply(box.value())), this.f);
+    }
+
+    public <G> Droplet<T, G> fmap(Function<F, G> func) {
         return new Droplet<>(box, func.apply(f));
     }
 
-    public <G> Droplet<A, G> fmap(BiFunction<Box<A>, F, G> func) {
+    public <G> Droplet<T, G> fmap(BiFunction<Box<T>, F, G> func) {
         return new Droplet<>(box, func.apply(box, f));
     }
 }
