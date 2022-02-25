@@ -1,6 +1,6 @@
 package anana5.sense.logpoints;
 
-public class Polymorphism {
+public class PolymorphicRecursion {
     public static void main(String[] args) {
         I i = new A();
         if (args.length == 0) {
