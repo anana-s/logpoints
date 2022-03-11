@@ -5,8 +5,6 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.management.RuntimeErrorException;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,8 +46,8 @@ public class Example {
     public static void main(String[] args) {
         logger.info("started {}", LocalDateTime.now());
         Example o = new Example();
-        o.add(phrase -> logger.info("call {}", phrase));
-        o.add(phrase -> logger.info("call {}", phrase));
+        o.add(phrase -> logger.info("call {} 1", phrase));
+        o.add(phrase -> logger.info("call {} 2", phrase));
         if (args.length != 0) {
             logger.error("wrong number of args");
             System.exit(1);

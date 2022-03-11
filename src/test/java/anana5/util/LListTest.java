@@ -2,21 +2,29 @@ package anana5.util;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.function.Function;
 
 import org.junit.jupiter.api.Test;
 
 class LListTest {
 
-    private final LList<Integer> a = new LList<>(1, 2, 3);
-    private final LList<Integer> b = new LList<>(4, 5, 6);
-    private final LList<LList<Integer>> c = new LList<>(a, b);
+    private final LList<Integer> a = LList.of(1, 2, 3);
+    private final LList<Integer> b = LList.of(4, 5, 6);
+    private final LList<LList<Integer>> c = LList.of(a, b);
 
     @Test
     void foldr() {
-        var actual = a.foldr(0, (a, b) -> Promise.just(a + b)).run();
-        assertEquals(6, actual);
+        var actual = LList.bind(a.foldr(LList.empty(), (a, b) -> b.push(a))).collect().join();
+        assertEquals(Arrays.asList(3, 2, 1), actual);
+    }
+
+    @Test
+    void foldl() {
+        var actual = LList.bind(a.foldl(LList.empty(), (a, b) -> b.push(a))).collect().join();
+        assertEquals(Arrays.asList(1, 2, 3), actual);
     }
 
     @Test
@@ -24,7 +32,7 @@ class LListTest {
         a.collect().bind(actual -> {
             assertEquals(Arrays.asList(1, 2, 3), actual);
             return Promise.<Void>nil();
-        }).run();
+        }).join();
     }
 
     @Test
@@ -32,23 +40,33 @@ class LListTest {
         LList.merge(a, b).collect().then(r$ -> {
             assertEquals(Arrays.asList(1, 2, 3, 4, 5, 6), r$);
             return Promise.<Void>nil();
-        }).run();
+        }).join();
     }
 
     @Test
     void flatmap() {
-        c.flatmap(LList::unbind).collect().then(actual -> {
+        c.flatmap(Function.identity()).collect().then(actual -> {
             assertEquals(Arrays.asList(1, 2, 3, 4, 5, 6), actual);
             return Promise.just(true);
-        }).run();
+        }).join();
     }
 
     @Test
     void filter() {
-        var out = a.filter((Function<Integer, Promise<Boolean>>)value -> Promise.just(value != 2));
+        var out = a.filter(value -> value != 2);
         out.collect().bind(actual -> {
             assertEquals(Arrays.asList(1,3), actual);
             return Promise.nil();
-        }).run();
+        }).join();
+    }
+
+    @Test
+    void traverse() {
+        List<Integer> actual = new ArrayList<>();
+        a.traverse(value -> {
+            actual.add(value);
+            return Promise.nil();
+        }).join();
+        assertEquals(Arrays.asList(1,2,3), actual);
     }
 }

@@ -12,6 +12,7 @@ public interface ListF<A, F> {
     <G> ListF<A, G> fmap(BiFunction<A, F, G> func);
     <B, G> ListF<B, G> bind(BiFunction<A, F, ListF<B, G>> func);
     <R> R match(Supplier<R> supplier, BiFunction<A ,F, R> func);
+    <R> ListFMatch<A, F, R> match();
 
     public static <A, F> ListF<A, F> nil() {
         return new Nil<>();
@@ -50,6 +51,17 @@ public interface ListF<A, F> {
         @Override
         public <R> R match(Supplier<R> supplier, BiFunction<A, F, R> func) {
             return supplier.get();
+        }
+
+        @Override
+        public <R> ListFMatch<A, F, R> match() {
+            return new ListFMatch<A, F, R>() {
+                @Override
+                public ListFMatch<A, F, R> nil(Supplier<R> supplier) {
+                    set(supplier);
+                    return this;
+                }
+            };
         }
     }
 
@@ -90,6 +102,26 @@ public interface ListF<A, F> {
         @Override
         public <R> R match(Supplier<R> supplier, BiFunction<A, F, R> func) {
             return func.apply(a, f);
+        }
+
+        @Override
+        public <R> ListFMatch<A, F, R> match() {
+            return new ListFMatch<A, F, R>() {
+                @Override
+                public ListFMatch<A, F, R> cons(BiFunction<A, F, R> func) {
+                    set(() -> func.apply(a, f));
+                    return this;
+                }
+            };
+        }
+    }
+
+    public class ListFMatch<T, F, R> extends Match<R> {
+        public ListFMatch<T, F, R> nil(Supplier<R> supplier) {
+            return this;
+        }
+        public ListFMatch<T, F, R> cons(BiFunction<T, F, R> func) {
+            return this;
         }
     }
 }

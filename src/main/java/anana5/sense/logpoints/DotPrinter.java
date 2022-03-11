@@ -2,7 +2,9 @@ package anana5.sense.logpoints;
 
 import java.io.PrintStream;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 import org.apache.commons.text.StringEscapeUtils;
@@ -11,12 +13,12 @@ import anana5.graph.Vertex;
 import soot.jimple.Stmt;
 
 public class DotPrinter implements AutoCloseable {
-    Map<Vertex<Stmt>, String> discovered;
+    Set<Vertex<Stmt>> discovered;
     PrintStream out;
     Function<Vertex<Stmt>, String> formatter;
 
     DotPrinter(PrintStream out, Function<Vertex<Stmt>, String> formatter) {
-        this.discovered = new HashMap<>();
+        this.discovered = new HashSet<>();
         this.out = out;
         this.out.println("digraph {");
         this.out.println("    edge [style=bold]");
@@ -24,14 +26,17 @@ public class DotPrinter implements AutoCloseable {
         this.formatter = formatter;
     }
     
-    public String discover(Vertex<Stmt> o) {
-        if (discovered.containsKey(o)) {
-            return discovered.get(o);
+    public String discover(Vertex<Stmt> vertex) {
+        if (vertex == null) {
+            return "root";
         }
-        String repr = "\"" + StringEscapeUtils.escapeJava(formatter.apply(o)) + "\"";
-        discovered.put(o, repr);
-        out.println("    " + repr);
-        return repr;
+        String id = String.format("nx%08x", vertex.id());
+        if (discovered.contains(vertex)) {
+            return String.format("nx%08x", vertex.id());
+        }
+        discovered.add(vertex);
+        out.println("    " + String.format("%s [label=\"%s\"]", id, StringEscapeUtils.escapeJava(formatter.apply(vertex))));
+        return id;
     }
 
     public void print(Vertex<Stmt> from, Vertex<Stmt> to) {

@@ -8,6 +8,7 @@ public class InvocationFollowingEmptyIteratorLoop {
     }
     public static void main(String[] args) {
         for (String arg : Arrays.asList(args)) {
+            arg.toString();
         }
         print("sweet pineapple");
     }

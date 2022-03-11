@@ -5,95 +5,124 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.function.BiFunction;
+import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 public class LList<T> {
     final private Promise<ListF<T, LList<T>>> unfix;
 
-    public LList(T item, LList<T> tail) {
-        unfix = Promise.just(ListF.cons(item, tail));
-    }
-    
-    @SafeVarargs
-    public LList(T... ts) {
-        this(Arrays.asList(ts));
-    }
-
-    public LList(Iterable<T> iter) {
-        this(iter.iterator());
-    }
-
-    public LList(Iterator<T> iter) {
-        this(iter, $ -> {
-            if (iter.hasNext()) {
-                return Promise.just(ListF.cons(iter.next(), iter));
-            } else {
-                return Promise.just(ListF.nil());
-            }
-        });
-    }
-
-    public LList(Promise<ListF<T, LList<T>>> promise) {
+    private LList(Promise<ListF<T, LList<T>>> promise) {
         unfix = promise;
     }
 
-    public <S> LList(S s, Function<S, Promise<ListF<T, S>>> func) {
-        unfix = func.apply(s).map(listF -> listF.fmap(s$ -> new LList<>(s$, func)));
+    public static <T> LList<T> fix(Promise<ListF<T, LList<T>>> promise) {
+        return new LList<>(promise);
     }
 
-    public Promise<T> head() {
-        return unfix.map(listF -> listF.match(() -> null, (a, f) -> a));
+    @Deprecated
+    public static <T> LList<T> nil() {
+        return LList.empty();
     }
 
-    public LList<T> tail() {
-        return LList.<T>bind(unfix.map(listF -> listF.match(() -> new LList<>(), (a, f) -> f)));
+    public static <T> LList<T> empty() {
+        return LList.fix(Promise.just(ListF.nil()));
     }
 
-    public <R> LList<R> map(Function<T, Promise<R>> func) {
-        return LList.bind(foldl(new LList<>(), (t, rs) -> func.apply(t).map(t$ -> new LList<R>(t$, rs))));
+    public static <T> LList<T> cons(T item, LList<T> tail) {
+        return LList.fix(Promise.just(ListF.cons(item, tail)));
+    }
+    
+    @SafeVarargs
+    public static <T> LList<T> of(T... ts) {
+        return LList.from(Arrays.asList(ts));
+    }
+
+    public static <T> LList<T> from(Iterable<T> iter) {
+        return LList.from(iter.iterator());
+    }
+
+    public static <T> LList<T> from(Iterator<T> iter) {
+        return LList.fix(Promise.just(() -> {
+            if (iter.hasNext()) {
+                return ListF.cons(iter.next(), LList.from(iter));
+            } else {
+                return ListF.nil();
+            }
+        }));
     }
 
     public static <S, T> LList<T> unfold(S s, Function<S, Promise<ListF<T, S>>> func) {
-        return new LList<T>(s, func);
+        return LList.fix(func.apply(s).map(listF -> listF.fmap(s$ -> LList.unfold(s$, func))));
     }
 
-    public <R> LList<R> flatmap(Function<T, Promise<LList<R>>> func) {
-        Promise<LList<R>> out = this.map(func).foldl(new LList<>(), (llist, acc) -> Promise.just(llist.concat(acc)));
-        return LList.bind(out);
+    public LList<T> push(T item) {
+        return LList.cons(item, this);
+    }
+
+    public Promise<Maybe<T>> head() {
+        return unfix.map(listF -> listF.match(() -> Maybe.nothing(), (t, f) -> Maybe.just(t)));
+    }
+
+    public Promise<Maybe<LList<T>>> tail() {
+        return unfix.map(listF -> listF.match(() -> Maybe.nothing(), (t, f) -> Maybe.just(f)));
+    }
+
+    public <R> LList<R> map(Function<T, R> func) {
+        return LList.bind(unfix.map(listF -> listF.match(() -> LList.nil(), (t, f) -> LList.cons(func.apply(t), f.map(func)))));
+        //return LList.bind(foldl(new LList<>(), (t, rs) -> func.apply(t).map(t$ -> new LList<R>(t$, rs))));
+    }
+
+    public <R> LList<R> flatmap(Function<T, LList<R>> func) {
+        return LList.bind(unfix.map(listF -> listF.match(() -> LList.nil(), (t, f) -> func.apply(t).concat(f.flatmap(func)))));
+        //return LList.bind(this.map(func).foldl(new LList<>(), (llist, acc) -> Promise.just(llist.concat(acc))));
     }
 
     public LList<T> concat(LList<T> other) {
-        var out = unfix.bind(listF -> listF.match(() -> other.unfix, (head, tail) -> Promise.just(ListF.cons(head, tail.concat(other)))));
-        return new LList<>(out);
+        return LList.bind(unfix.map(listF -> listF.match(() -> other, (t, f) -> LList.cons(t, f.concat(other)))));
+        // var out = unfix.then(listF -> listF.match(() -> other.unfix, (head, tail) -> Promise.just(ListF.cons(head, tail.concat(other)))));
+        // return new LList<>(out);
     }
 
     @SafeVarargs
     public static <R> LList<R> merge(LList<R>... lists) {
-        return new LList<>(Arrays.asList(lists)).flatmap(LList::unbind);
+        var llist = lists[lists.length - 1];
+        for (int i = lists.length - 2; i >= 0; i--) {
+            llist = lists[i].concat(llist);
+        }
+        return llist;
     }
 
-    public <R> Promise<Void> traverse(Function<T, Promise<Void>> consumer) {
-        return foldr(null, (t, null$) -> {
-            return consumer.apply(t);
+    public Promise<Void> traverse(Consumer<T> consumer) {
+        return traverse(t -> {
+            consumer.accept(t);
+            return Promise.nil();
         });
+    }
+
+    
+
+    public Promise<Void> traverse(Function<T, Promise<Void>> consumer) {
+        return unfix.then(listF -> listF.match(() -> Promise.nil(), (t, f) -> {
+            return consumer.apply(t).bind($ -> f.traverse(consumer));
+        }));
     }
 
     public Promise<Collection<T>> collect() {
         return foldr(new ArrayList<>(), (t, out) -> {
             out.add(t);
-            return Promise.just(out);
+            return out;
         });
     }
 
-    public <R> Promise<R> foldr(R r, BiFunction<T, R, Promise<R>> func) {
-        return unfix.bind(listF -> listF.match(() -> Promise.just(r), (s, next) -> {
-            var cur = func.apply(s, r);
-            return cur.bind(t -> next.foldr(t, func));
-        }));
+    public <R> Promise<R> foldr(R r, BiFunction<T, R, R> func) {
+        return unfix.then(listF -> listF.match(() -> Promise.just(r), (t, next) -> Promise.just(func.apply(t, r)).then(s -> next.foldr(s, func))));
     }
 
-    public <R> Promise<R> foldl(R r, BiFunction<T, R, Promise<R>> func) {
-        return fold(p -> p.bind(listF -> listF.match(() -> Promise.just(r), (s, next) -> next.bind(t -> func.apply(s, t)))));
+    public <R> Promise<R> foldl(R r, BiFunction<T, R, R> func) {
+        return unfix.then(listF -> listF.match(() -> Promise.just(r), (t, next) -> next.foldl(r, func).map(s -> func.apply(t, s))));
+        //return fold(p -> p.then(listF -> listF.match(() -> Promise.just(r), (s, next) -> next.then(t -> func.apply(s, t)))));
     }
 
     public <R> R fold(Function<Promise<ListF<T, R>>, R> func) {
@@ -101,30 +130,56 @@ public class LList<T> {
     }
 
     public static <T> LList<T> bind(Promise<LList<T>> promise) {
-        return new LList<>(promise.bind(lList -> lList.unfix));
+        return new LList<>(promise.then(lList -> lList.unfix));
     }
 
     public Promise<Boolean> isEmpty() {
         return unfix.map(listF -> listF.match(() -> true, (t, f) -> false));
     }
 
-    public LList<T> filter(Function<? super T, Promise<Boolean>> func) {
-        Promise<LList<T>> out = fold(p -> {
-            return p.bind(listF -> listF.match(() -> Promise.just(new LList<>()), (head, tail$) -> {
-                return func.apply(head).bind(condition -> {
-                    if (condition) {
-                        return tail$.map(tail -> new LList<T>(head, tail));
-                    } else {
-                        return tail$;
-                    }
-                });
-            }));
+    public LList<T> filter(Predicate<? super T> func) {
+        Promise<LList<T>> out = foldl(LList.nil(), (head, tail) -> {
+            if (func.test(head)) {
+                return LList.cons(head, tail);
+            } else {
+                return tail;
+            }
         });
 
         return LList.bind(out);
     }
 
-    public Promise<LList<T>> unbind() {
-        return Promise.just(this);
+    public boolean resolved() {
+        return unfix.resolved() && unfix.get().match(() -> true, (t, f) -> f.resolved());
+    }
+
+    public Promise<LList<T>> join() {
+        return unfix.then(listF -> listF.match(() -> Promise.just(this), (t, f) -> f.join()));
+    }
+
+    public <R> Promise<R> match(Supplier<R> nil, BiFunction<T, LList<T>, R> cons) {
+        return unfix.map(listF -> listF.match(() -> nil.get(), (t, f) -> cons.apply(t, f)));
+    }
+
+    public <R> LListMatch<R> match() {
+        return new LListMatch<>();
+    }
+
+    public class LListMatch<R> extends Match<Promise<R>> {
+        Supplier<R> nil;
+        BiFunction<T, LList<T>, R> cons;
+        public LListMatch() {
+            set(() -> unfix.map(listF -> listF.match(nil, cons)));
+        }
+
+        public LListMatch<R> nil(Supplier<R> nil) {
+            this.nil = nil; 
+            return this;
+        }
+
+        public LListMatch<R> cons(BiFunction<T, LList<T>, R> cons) {
+            this.cons = cons;
+            return this;
+        }
     }
 }
