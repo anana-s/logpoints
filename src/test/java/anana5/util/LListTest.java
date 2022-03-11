@@ -17,13 +17,13 @@ class LListTest {
 
     @Test
     void foldr() {
-        var actual = LList.bind(a.foldr(LList.empty(), (a, b) -> b.push(a))).collect().join();
+        var actual = LList.bind(a.foldr(LList.of(), (a, b) -> b.push(a))).collect().join();
         assertEquals(Arrays.asList(3, 2, 1), actual);
     }
 
     @Test
     void foldl() {
-        var actual = LList.bind(a.foldl(LList.empty(), (a, b) -> b.push(a))).collect().join();
+        var actual = LList.bind(a.foldl(LList.of(), (a, b) -> b.push(a))).collect().join();
         assertEquals(Arrays.asList(1, 2, 3), actual);
     }
 

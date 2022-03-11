@@ -18,30 +18,30 @@ public class ComputePrintlnRatio {
         Set<Vertex<Stmt>> seen = new HashSet<>();
         LList<Tuple<Double, Double>> ratios = graph.fold(droplets -> {
             return droplets.flatmap(droplet -> {
-                if (seen.contains(droplet.get())) {
-                    return LList.cons(new Tuple<>(.0, .0), LList.nil());
+                if (seen.contains(droplet.vertex())) {
+                    return LList.cons(Tuple.of(.0, .0), LList.of());
                 }
-                seen.add(droplet.get());
+                seen.add(droplet.vertex());
                 return LList.bind(droplet.next().isEmpty().map(isEmpty -> {
-                    if (droplet.get().value().getInvokeExpr().getMethodRef().getName().equals("println")) {
+                    if (droplet.vertex().value().getInvokeExpr().getMethodRef().getName().equals("println")) {
                         if (isEmpty) {
-                            return LList.cons(new Tuple<>(1., 1.), LList.nil());
+                            return LList.cons(Tuple.of(1., 1.), LList.of());
                         } else {
-                            return droplet.next().map(tuple -> new Tuple<>(tuple.fst() + 1., tuple.snd() + 1.));
+                            return droplet.next().map(tuple -> Tuple.of(tuple.fst() + 1., tuple.snd() + 1.));
                         }
                     } else {
                         if (isEmpty) {
-                            return LList.cons(new Tuple<>(0., 1.), LList.nil());
+                            return LList.cons(Tuple.of(0., 1.), LList.of());
                         } else  {
-                            return droplet.next().map(tuple -> new Tuple<>(tuple.fst(), tuple.snd() + 1.));
+                            return droplet.next().map(tuple -> Tuple.of(tuple.fst(), tuple.snd() + 1.));
                         }
                     }
                 }));
             });
         });
 
-        Double average = ratios.foldr(new Tuple<>(.0, .0), (cur, acc) -> {
-            return new Tuple<>((cur.fst() / cur.snd()) + acc.fst(), acc.snd() + 1);
+        Double average = ratios.foldr(Tuple.of(.0, .0), (cur, acc) -> {
+            return Tuple.of((cur.fst() / cur.snd()) + acc.fst(), acc.snd() + 1);
         }).map(tuple -> {
             return tuple.fst() / tuple.snd();
         }).join();

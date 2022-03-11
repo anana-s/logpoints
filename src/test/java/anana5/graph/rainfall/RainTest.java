@@ -47,12 +47,12 @@ public class RainTest {
         Drop.of(V.of(1), Rain.of(
             Drop.of(V.of(2), Rain.of(
                 Drop.of(V.of(4), Rain.of(
-                    Drop.of(V.of(5), Rain.empty())
+                    Drop.of(V.of(5), Rain.of())
                 ))
             )),
             Drop.of(V.of(3), Rain.of(
                 Drop.of(V.of(4), Rain.of(
-                    Drop.of(V.of(5), Rain.empty())
+                    Drop.of(V.of(5), Rain.of())
                 ))
             ))
         ))
@@ -114,7 +114,7 @@ public class RainTest {
 
     @Test
     void mergeEmtpy() {
-        Rain<Integer> rain = Rain.merge(LList.nil());
+        Rain<Integer> rain = Rain.merge(LList.of());
         Promise<Integer> pActual = rain.fold(droplets -> droplets.foldl(Promise.just(0), (droplet, pAcc) -> null).then(Function.identity()));
         assertEquals(0, pActual.join());
     }

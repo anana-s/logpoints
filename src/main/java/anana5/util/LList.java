@@ -23,11 +23,7 @@ public class LList<T> {
 
     @Deprecated
     public static <T> LList<T> nil() {
-        return LList.empty();
-    }
-
-    public static <T> LList<T> empty() {
-        return LList.fix(Promise.just(ListF.nil()));
+        return LList.of();
     }
 
     public static <T> LList<T> cons(T item, LList<T> tail) {
@@ -133,7 +129,12 @@ public class LList<T> {
         return new LList<>(promise.then(lList -> lList.unfix));
     }
 
+    @Deprecated
     public Promise<Boolean> isEmpty() {
+        return unfix.map(listF -> listF.match(() -> true, (t, f) -> false));
+    }
+
+    public Promise<Boolean> empty() {
         return unfix.map(listF -> listF.match(() -> true, (t, f) -> false));
     }
 

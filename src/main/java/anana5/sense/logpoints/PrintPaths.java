@@ -18,7 +18,7 @@ public class PrintPaths {
 
         var seen = new HashMap<Vertex<Stmt>, LList<Path<Vertex<Stmt>>>>();
         LList<Path<Vertex<Stmt>>> paths = graph.fold(droplets -> droplets.flatmap(droplet -> {
-            var vertex = droplet.get();
+            var vertex = droplet.vertex();
 
             if (seen.containsKey(vertex)) {
                 return seen.get(vertex);
@@ -27,7 +27,7 @@ public class PrintPaths {
             var paths$ = droplet.next();
             return LList.bind(paths$.isEmpty().map(isEmpty -> {
                 if (isEmpty) {
-                    var path$ = LList.cons(Path.<Vertex<Stmt>>nil(), LList.nil());
+                    var path$ = LList.cons(Path.<Vertex<Stmt>>nil(), LList.of());
                     seen.put(vertex, path$);
                     return path$;
                 } else {

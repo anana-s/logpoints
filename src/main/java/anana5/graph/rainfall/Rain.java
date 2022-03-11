@@ -29,10 +29,6 @@ public class Rain<T> {
         this.unfix = drops;
     }
 
-    public static <T> Rain<T> empty() {
-        return new Rain<>(LList.empty());
-    }
-
     @SafeVarargs
     public static <T> Rain<T> of(Drop<T, Rain<T>>... drops) {
         return new Rain<>(LList.of(drops));
@@ -144,8 +140,13 @@ public class Rain<T> {
         return new Rain<>(LList.bind(promise.map(rain -> rain.unfix)));
     }
 
+    @Deprecated
     public Promise<Boolean> isEmpty() {
-        return unfix.isEmpty();
+        return unfix.empty();
+    }
+
+    public Promise<Boolean> empty() {
+        return unfix.empty();
     }
 
     public Rain<T> filter(Predicate<? super Vertex<T>> predicate) {

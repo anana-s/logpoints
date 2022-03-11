@@ -1,5 +1,6 @@
 package anana5.util;
 
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 public class Path<T> {
@@ -46,6 +47,15 @@ public class Path<T> {
 
     public int length() {
         return length;
+    }
+
+    public <R> R foldr(R r, BiFunction<R, T, R> func) {
+        return unfix.match(() -> r, (t, f) -> f.foldr(func.apply(r, t), func));
+    }
+
+    
+    public <R> R foldl(BiFunction<T, R, R> func, R r) {
+        return unfix.match(() -> r, (t, f) -> func.apply(t, f.foldl(func, r)));
     }
 
     public void traverse(Consumer<T> visitor) {

@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
@@ -24,6 +25,7 @@ import anana5.util.Computation;
 import anana5.util.LList;
 import anana5.util.Path;
 import anana5.util.Promise;
+import anana5.util.Tuple;
 import net.sourceforge.argparse4j.inf.Namespace;
 import soot.PackManager;
 import soot.Scene;
@@ -220,7 +222,7 @@ public class Factory {
             .fold(droplets -> Rain.fix(droplets.filter(droplet -> droplet.value() != null)));
     }
 
-    private Rain<Stmt> build(LList<SootMethod> methods, Path<SootMethod> path, Set<SootMethod> CGGuards) {
+    private Rain<Stmt> build(LList<SootMethod> methods, Path<SootMethod> path, boolean guard) {
         // construct subrain for each method
         return Rain.bind(Rain.merge(methods.map(method -> {
             if (visited.containsKey(method)) {
@@ -268,13 +270,13 @@ public class Factory {
     class CFGFactory {
         String sourceName;
         SootMethod method;
-        Map<Stmt, Rain<Stmt>> visited;
+        Map<Stmt, Rain<Stmt>> memo;
         ExceptionalUnitGraph cfg;
         CFGFactory(SootMethod method) {
             var body = method.retrieveActiveBody();
             if (body instanceof JimpleBody) {
                 this.method = method;
-                this.visited = new HashMap<>();
+                this.memo = new HashMap<>();
                 Factory.cpf.apply(body);
                 this.cfg = new ExceptionalUnitGraph(body);
                 this.sourceName = method.getDeclaringClass().getName() + "." + method.getName();
@@ -283,29 +285,32 @@ public class Factory {
             }
         }
 
-        Rain<Stmt> build(Path<SootMethod> path, Set<SootMethod> CGGuards) {
-            return build(LList.from(cfg.getHeads()).map(unit -> (Stmt)unit), new HashSet<>(), path, CGGuards);
+        Rain<Stmt> build(Path<SootMethod> path, boolean guard) {
+            var subpath = new Path<Stmt>();
+            return build(LList.from(cfg.getHeads()).map(unit -> (Stmt)unit), path, subpath);
         }
 
-        private Rain<Stmt> build(LList<Stmt> stmts, Set<Stmt> CFGGuards, Path<SootMethod> path, Set<SootMethod> CGGuards) {
+        private Rain<Stmt> build(LList<Stmt> stmts, Path<SootMethod> path, Path<Tuple<Stmt, Boolean>> subpath) {
             // build rain for each stmt and merge
             return Rain.merge(stmts.map(stmt -> {
-                if (visited.containsKey(stmt)) {
+                if (memo.containsKey(stmt)) {
                     // return from cache;
-                    logger.trace("{} [{}]@{} loaded from cache", format(path), stmt, stmt.hashCode());
+                    logger.trace("{} [{}]@{} loaded from cache", format(path, subpath));
                     return visited.get(stmt);
                 }
 
-                if (CFGGuards.contains(stmt)) {
-                    // break empty cycle
-                    logger.trace("{} [{}]@{} is closing an empty loop", format(path), stmt, stmt.hashCode());
+                if (subpath.contains(stmt)) {
+                    // if empty cycle remove it
+                    logger.trace("{} [{}]@{} is closing an empty loop", format(path, subpath));
+                    // cannot memo
                     return Rain.empty();
                 }
 
+                // return stmt
                 if (stmt instanceof ReturnStmt || stmt instanceof ReturnVoidStmt) {
                     Rain<Stmt> rain = Rain.of(Drop.of(new Box(null), Rain.empty()));
-                    visited.put(stmt, rain);
-                    logger.trace("{} [{}]@{} returned", format(path), stmt, stmt.hashCode());
+                    memo.put(Key.of(stmt), rain);
+                    logger.trace("{} [{}]@{} returned", format(path, subpath));
                     return rain;
                 }
 
@@ -324,28 +329,27 @@ public class Factory {
                             // clear guards and make new droplet
                             stmt.addTag(new SourceMapTag(this.sourceName, stmt.getJavaSourceStartLineNumber(), stmt.getJavaSourceStartColumnNumber()));
                             Box box = new Box(stmt);
-                            Drop<Stmt, Rain<Stmt>> drop = Drop.of(box, build(rets, new HashSet<>(), path, new HashSet<>()));
+                            Drop<Stmt, Rain<Stmt>> drop = Drop.of(box, build(rets, path, subpath.push(stmt), false)); // no need to guard since we did not skip this stmt
                             Rain<Stmt> rain = Rain.of(drop);
-                            visited.put(stmt, rain);
-                            logger.trace("{} [{}]@{} reported with successors {} by matching {} with tag {}", format(path), stmt, stmt.hashCode(), code, methodName, pattern.toString());
+                            memo.put(Key.of(stmt), rain);
+                            logger.trace("{} reported with successors {} by matching {} with tag {}", format(path, subpath), code, methodName, pattern.toString());
                             return rain;
                         }
                     }
-
-                    CFGGuards.add(stmt);
 
                     // get subrain
                     LList<SootMethod> methods = LList.from(cg.edgesOutOf(stmt)).map(edge -> edge.tgt());
 
                     Rain<Stmt> rain = Rain.bind(methods.isEmpty().map(isEmpty -> {
                         if (isEmpty) {
-                            logger.trace("{} [{}]@{} resolves to nothing with successors", format(path), stmt, stmt.hashCode(), code);
-                            return build(rets, CFGGuards, path, CGGuards);
+                            // no method resolved
+                            logger.trace("{} resolved to nothing with successors {}", format(path, subpath), code);
+                            return build(rets, path, subpath.push(stmt), true);
                         } else {
-                            logger.trace("{} [{}]@{} expanded with successors {}", format(path), stmt, stmt.hashCode(), code);
-                            Rain<Stmt> subRain = Factory.this.build(methods, path, CGGuards);
-                            Rain<Stmt> unguardedRets = build(rets, new HashSet<>(), path, new HashSet<>());
-                            Rain<Stmt> guardedRets = build(rets, CFGGuards, path, CGGuards);
+                            logger.trace("{} expanded with successors {}", format(path, subpath), code);
+                            Rain<Stmt> subRain = Factory.this.build(methods, path, guard);
+                            Rain<Stmt> unguardedRets = build(rets, path, subpath.push(stmt));
+                            Rain<Stmt> guardedRets = build(rets, path, subpath.push(stmt));
                             return Rain.merge(subRain.unfix().map(droplet -> {
                                 Stmt s = droplet.value();
                                 if (s == null) {
@@ -363,13 +367,13 @@ public class Factory {
                         }
                     }));
                     rain = deduplicate(rain);
-                    visited.put(stmt, rain);
+                    memo.put(stmt, rain); // need to memo guard since the invocation itself is skipped
                     return rain;
                 } else {
-                    CFGGuards.add(stmt);
-                    Rain<Stmt> rain = build(rets, CFGGuards, path, CGGuards);
+                    Rain<Stmt> rain = build(rets, path, subpath.push(stmt), guard);
                     rain = deduplicate(rain);
-                    logger.trace("{} [{}]@{} skipped with successors {}", format(path), stmt, stmt.hashCode(), code);
+                    memo.put(stmt, rain);
+                    logger.trace("{} skipped with successors {}", format(path, subpath, guard), code);
                     return rain;
                 }
             }));
@@ -408,10 +412,73 @@ public class Factory {
     }
     
 
-    String format(Path<SootMethod> path) {
+    String format(Path<SootMethod> path, Path<Stmt> subpath, boolean guard) {
+        String fpath;
         if (path.length() == 0) {
-            return "0::<>@" + path.hashCode();
+            fpath = "0::<>";
         }
-        return path.length() + "::" + path.head().get().toString() + "@" + path.hashCode();
+        var method = path.head().get();
+        fpath = path.length() + "::" + method.toString() + "@" + method.hashCode();
+
+        String fsubp;
+        if (subpath.length() == 0) {
+            fsubp = "0::[]";
+        }
+        var stmt = subpath.head().get();
+        fsubp = subpath.length() + "::" + stmt.toString() + "@" + stmt.hashCode();
+
+        if (guard) {
+            return fpath + " " + fsubp + " [guarded]";
+        } else {
+            return fpath + " " + fsubp;
+        }
+    }
+
+    boolean cycle(Stmt stmt, Path<Tuple<Stmt, Boolean>> subpath) {
+    }
+
+    public static class Key<T> {
+        private final T t;
+        private Key(T t) {
+            this.t = t;
+        }
+        public static <T> Key<T> of(T t) {
+            return new Key<>(t);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(t);
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (obj == null) {
+                return false;
+            }
+            if (!(obj instanceof Key<?>)) {
+                return false;
+            }
+            Key<?> other = (Key<?>) obj;
+            return Objects.equals(this.t, other.t);
+        }
+    }
+
+    public static class GuardedKey<T> extends Key<T> {
+        private final boolean guard;
+        private GuardedKey(T t, boolean guard) {
+            super(t);
+            this.guard = guard;
+        }
+        public static <T> GuardedKey<T> of(T t, boolean guard) {
+            return new GuardedKey<>(t, guard);
+        }
+        @Override
+        public boolean equals(Object obj) {
+            return super.equals(obj) && (!(obj instanceof GuardedKey<?>) || Objects.equals(this.guard, ((GuardedKey<?>) obj).guard));
+        }
     }
 }
