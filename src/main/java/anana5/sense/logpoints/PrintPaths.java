@@ -25,8 +25,8 @@ public class PrintPaths {
             }
 
             var paths$ = droplet.next();
-            return LList.bind(paths$.isEmpty().map(isEmpty -> {
-                if (isEmpty) {
+            return LList.bind(paths$.empty().map(e -> {
+                if (e) {
                     var path$ = LList.cons(Path.<Vertex<Stmt>>nil(), LList.of());
                     seen.put(vertex, path$);
                     return path$;

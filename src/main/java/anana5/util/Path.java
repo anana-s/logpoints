@@ -54,8 +54,8 @@ public class Path<T> {
     }
 
     
-    public <R> R foldl(BiFunction<T, R, R> func, R r) {
-        return unfix.match(() -> r, (t, f) -> func.apply(t, f.foldl(func, r)));
+    public <R> R foldl(BiFunction<R, T, R> func, R r) {
+        return unfix.match(() -> r, (t, f) -> func.apply(f.foldl(func, r), t));
     }
 
     public void traverse(Consumer<T> visitor) {
