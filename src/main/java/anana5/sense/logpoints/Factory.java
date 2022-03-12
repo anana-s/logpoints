@@ -9,9 +9,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -38,7 +36,6 @@ import soot.jimple.JimpleBody;
 import soot.jimple.ReturnStmt;
 import soot.jimple.ReturnVoidStmt;
 import soot.jimple.Stmt;
-import soot.jimple.ThrowStmt;
 import soot.jimple.toolkits.callgraph.CallGraph;
 import soot.options.Options;
 import soot.toolkits.graph.ExceptionalUnitGraph;
@@ -56,7 +53,7 @@ public class Factory {
     }
 
     private List<Pattern> tags = new ArrayList<>();
-    private Map<SootMethod, Tuple<Rain<Stmt>, Promise<Boolean>>> memo = new HashMap<>();
+    private Map<SootMethod, Rain<Stmt>> memo = new HashMap<>();
 
     private CallGraph cg;
 
@@ -218,57 +215,71 @@ public class Factory {
             this.cg = Scene.v().getCallGraph();
         }
 
-        var t = build(LList.from(Scene.v().getEntryPoints()), new Path<>(), false);
-        return t.fst().fold(droplets -> Rain.fix(droplets.filter(droplet -> droplet.value() != null)));
+        return build(LList.from(Scene.v().getEntryPoints()), new Path<>())
+            .fold(droplets -> Rain.fix(droplets.filter(droplet -> droplet.value() != null)));
     }
 
-    private Tuple<Rain<Stmt>, Promise<Boolean>> build(LList<SootMethod> methods, Path<Tuple<SootMethod, Boolean>> path, boolean guard) {
-        // juggling the objects to the proper types
-        var t = Tuple.unzip(methods.map(method -> build(method, path, guard)));
-        var r = Rain.bind(Rain.merge(t.fst()).resolve());
-        var g = Promise.all(t.snd()).then(gs -> gs.foldr(false, (a, b) -> a || b));
-        return Tuple.of(r, g);
+    private Rain<Stmt> build(LList<SootMethod> methods, Path<Tuple<SootMethod, Boolean>> path) {
+        // build clinit first
+        final var cs = methods.filter(method ->  method.getName().equals("<clinit>"));
+        final var ms = methods.filter(method -> !method.getName().equals("<clinit>"));
+
+        final var cr = Rain.bind(Rain.<Stmt>merge(cs.map(method -> build(method, path))).resolve());
+        final var mr = Promise.just(() -> Rain.bind(Rain.<Stmt>merge(ms.map(method -> build(method, path))).resolve()));
+
+        return Rain.<Stmt>bind(cr.empty().map(e -> {
+            if (e) {
+                return mr.join();
+            }
+
+            return cr.<Rain<Stmt>>fold(ds -> Rain.merge(ds.map(d -> {
+                var stmt = d.value();
+                if (stmt == null) {
+                    return mr.join();
+                }
+                return Rain.of(d);
+            })));
+        }));
     }
 
-    private Tuple<Rain<Stmt>, Promise<Boolean>> build(SootMethod method, Path<Tuple<SootMethod, Boolean>> path, boolean guard) {
+    private Rain<Stmt> build(SootMethod method, Path<Tuple<SootMethod, Boolean>> path) {
         if (memo.containsKey(method)) {
-            var t = memo.get(method);
-            if (check(method, path)) {
-                if (guard) {
+            var rain = memo.get(method);
+            var knot = knot(method, path); // fst is recursive, snd is knot
+            if (knot.fst()) {
+                if (knot.snd()) {
                     // break empty cycle
                     logger.trace("{} is closing an empty loop", format(path, method));
-                    return Tuple.of(Rain.of(), Promise.just(false));
+                    return Rain.of();
                 } else {
                     logger.trace("{} loaded from cache", format(path, method));
-                    return t;
+                    return rain;
                 }
             } else {
                 // map to new boxes
                 logger.trace("{} loaded from cache in new context", format(path, method));
-                var r = t.fst().map(v -> new Box(v.value()));
-                var g = t.snd();
-                return Tuple.of(r, g);
+                return rain.map(v -> new Box(v.value()));
             }
         }
 
         if (method.isPhantom()){
             logger.trace("{} skipped due to being phantom", format(path, method));
-            return Tuple.of(Rain.of(Drop.of(new Box(null), Rain.of())), Promise.just(guard));
+            return Rain.of(Drop.of(new Box(null), Rain.of()));
         }
 
         if (!method.isConcrete()) {
             logger.trace("{} skipped due to not being concrete", format(path, method));
-            return Tuple.of(Rain.of(Drop.of(new Box(null), Rain.of())), Promise.just(guard));
+            return Rain.of(Drop.of(new Box(null), Rain.of()));
         }
 
         if (method.getDeclaringClass().isLibraryClass()) {
             logger.trace("{} skipped due to being library method", format(path, method));
-            return Tuple.of(Rain.of(Drop.of(new Box(null), Rain.of())), Promise.just(guard));
+            return Rain.of(Drop.of(new Box(null), Rain.of()));
         }
 
         var builder = new CFGFactory(method);
         logger.trace("{} loading", format(path, method));
-        var rain = builder.build(path.push(method));
+        var rain = builder.build(path);
         memo.put(method, rain);
         return rain;
     }
@@ -276,7 +287,7 @@ public class Factory {
     class CFGFactory {
         String sourceName;
         SootMethod method;
-        Map<Stmt, Tuple<Rain<Stmt>, Promise<Boolean>>> memo;
+        Map<Stmt, Rain<Stmt>> memo;
         ExceptionalUnitGraph cfg;
         CFGFactory(SootMethod method) {
             var body = method.retrieveActiveBody();
@@ -291,37 +302,32 @@ public class Factory {
             }
         }
 
-        public Tuple<Rain<Stmt>, Promise<Boolean>> build(Path<Tuple<SootMethod, Boolean>> path) {
+        public Rain<Stmt> build(Path<Tuple<SootMethod, Boolean>> path) {
             return build(LList.from(cfg.getHeads()).map(unit -> (Stmt)unit), path, new Path<>(), false);
         }
 
-        private Tuple<Rain<Stmt>, Promise<Boolean>> build(LList<Stmt> stmts, Path<Tuple<SootMethod, Boolean>> path, Path<Tuple<Stmt, Boolean>> subpath, boolean guard) {
-            // juggling the objects to the proper types
-            var t = Tuple.unzip(stmts.map(stmt -> build(stmt, path, subpath, guard)));
-            var r = Rain.merge(t.fst());
-            var g = Promise.all(t.snd()).then(gs -> gs.foldr(false, (a, b) -> a || b));
-            return Tuple.of(r, g);
+        private Rain<Stmt> build(LList<Stmt> stmts, Path<Tuple<SootMethod, Boolean>> path, Path<Tuple<Stmt, Boolean>> subpath, boolean guard) {
+            return Rain.merge(stmts.map(stmt -> build(stmt, path, subpath, guard)));
         }
 
-        private Tuple<Rain<Stmt>, Promise<Boolean>> build(Stmt stmt, Path<Tuple<SootMethod, Boolean>> path, Path<Tuple<Stmt, Boolean>> subpath, boolean guard) {
+        private Rain<Stmt> build(Stmt stmt, Path<Tuple<SootMethod, Boolean>> path, Path<Tuple<Stmt, Boolean>> subpath, boolean guard) {
             if (memo.containsKey(stmt)) {
+                if (knot(stmt, subpath)) {
+                    // break cycles
+                    logger.trace("{} is closing an empty loop", format(path, method, stmt));
+                    return Rain.of();
+                }
                 // return from cache;
-                logger.trace("{} loading from cache", format(path, subpath, stmt));
+                logger.trace("{} loaded from cache", format(path, method, stmt));
                 return memo.get(stmt);
-            }
-
-            if (cycle(stmt, subpath)) {
-                // break cycles
-                logger.trace("{} is closing an empty loop", format(path, subpath, stmt));
-                return Tuple.of(Rain.of(), Promise.just(false));
             }
 
             // return stmt
             if (stmt instanceof ReturnStmt || stmt instanceof ReturnVoidStmt) {
-                var out = Tuple.of(Rain.of(Drop.of(new Box(null), Rain.of())), Promise.just(guard));
-                memo.put(stmt, out);
-                logger.trace("{} returning", format(path, subpath, stmt));
-                return out;
+                var rain = Rain.of(Drop.of(new Box(null), Rain.of()));
+                memo.put(stmt, rain);
+                logger.trace("{} returning", format(path, method, stmt));
+                return rain;
             }
 
             //TODO handle exceptional dests;
@@ -337,51 +343,49 @@ public class Factory {
                 for (Pattern pattern : Factory.this.tags) {
                     if (pattern.matcher(methodName).find()) {
                         stmt.addTag(new SourceMapTag(this.sourceName, stmt.getJavaSourceStartLineNumber(), stmt.getJavaSourceStartColumnNumber()));
-                        logger.trace("{} matched with tag {}, reporting with successors {}", format(path, subpath, stmt), pattern.toString(), code);
-                        var t = build(rets, path, subpath.push(Tuple.of(stmt, true)), true);
-                        var out = Tuple.of(Rain.of(Drop.of(new Box(stmt), t.fst())), t.snd()); // always true
-                        memo.put(stmt, out);
-                        return out;
+                        logger.trace("{} matched with tag {}, reporting with successors {}", format(path, method, stmt), pattern.toString(), code);
+                        var rain = Rain.of(Drop.of(new Box(stmt), build(rets, path, subpath.push(Tuple.of(stmt, true)), true)));
+                        memo.put(stmt, rain);
+                        return rain;
                     }
                 }
 
                 // get subrain
-                LList<SootMethod> methods = LList.from(cg.edgesOutOf(stmt)).map(edge -> edge.tgt());
+                final var methods = LList.from(cg.edgesOutOf(stmt)).map(edge -> edge.tgt());
 
-                var t$p = methods.empty().<Tuple<Rain<Stmt>, Promise<Boolean>>>then(e -> {
+                var rain = Rain.bind(methods.empty().<Rain<Stmt>>map(e -> {
                     if (e) {
                         // no method resolved
-                        logger.trace("{} failed to resolve, skipping with successors {}", format(path, subpath, stmt), code);
-                        return Promise.just(build(rets, path, subpath.push(Tuple.of(stmt, false)), guard));
-                    } else {
-                        logger.trace("{} expanding with successors {}", format(path, subpath, stmt), code);
-                        var t$$ = Factory.this.build(methods, path, guard);
-                        return t$$.snd().then(g$$ -> {
-                            var t = build(rets, path, subpath.push(Tuple.of(stmt, g$$)), guard);
-                            var r = t.fst();
-                            var g = t.snd();
-                            var r$$ = t$$.fst().<Rain<Stmt>>fold(ds -> Rain.merge(ds.map(d -> {
-                                Stmt ss = d.value();
-                                if (ss == null) {
-                                    return r;
-                                }
-                                return Rain.of(d);
-                            })));
-                            return Promise.just(Tuple.of(r$$, t$$.snd().bind(a -> g.map(b -> a || b))));
-                        });
+                        logger.trace("{} failed to resolve, skipping with successors {}", format(path, method, stmt), code);
+                        return build(rets, path, subpath.push(Tuple.of(stmt, false)), guard);
                     }
-                });
-                var r$ = Rain.bind(t$p.map(Tuple::fst));
-                var g$ = t$p.bind(Tuple::snd);
-                r$ = deduplicate(r$);
-                return Tuple.of(r$, g$);
+                    logger.trace("{} expanding with successors {}", format(path, method, stmt), code);
+                    final var r = Factory.this.build(methods, path.push(Tuple.of(this.method, guard)));
+                    final var guarded = build(rets, path, subpath.push(Tuple.of(stmt, false)), guard);
+                    final var unguarded = build(rets, path, subpath.push(Tuple.of(stmt, true)), true);
+                    return Rain.<Stmt>merge(r.unfix().<Rain<Stmt>>map(d -> {
+                        var s = d.value();
+                        if (s == null) {
+                            return guarded;
+                        }
+                        return r.fold(d$s -> Rain.merge(d$s.map(d$ -> {
+                            var s$ = d$.value();
+                            if (s$ == null) {
+                                return unguarded;
+                            }
+                            return Rain.of(d$);
+                        })));
+                    }));
+                }));
+                rain = deduplicate(rain);
+                memo.put(stmt, rain);
+                return rain;
             } else {
-                var t = build(rets, path, subpath.push(Tuple.of(stmt, false)), guard);
-                var r = t.fst();
-                var g = t.snd();
-                r = deduplicate(r);
-                logger.trace("{} skipping with successors {}", format(path, subpath, stmt), code);
-                return Tuple.of(r, g);
+                var rain = build(rets, path, subpath.push(Tuple.of(stmt, false)), guard);
+                logger.trace("{} skipped with successors {}", format(path, method, stmt), code);
+                rain = deduplicate(rain);
+                memo.put(stmt, rain);
+                return rain;
             }
         }
 
@@ -417,44 +421,38 @@ public class Factory {
         }
     }
 
-    String format(Path<Tuple<SootMethod, Boolean>> path) {
-        if (path.length() == 0) {
-            return "0::<>";
-        }
-        var t = path.head().get();
-        var m = t.fst();
-        var g = t.snd();
-        var s = path.length() + "::" + m.toString() + "@" + m.hashCode();
-        if (g) {
-            return s + "[guarded]";
-        } else {
-            return s;
-        }
-    }
-
-    String format(Path<Tuple<SootMethod, Boolean>> path, Path<Tuple<Stmt, Boolean>> subpath, Stmt stmt) {
-        return format(path) + " " + subpath.length() + "::" + stmt.toString() + "@" + stmt.hashCode();
-    }
-
     String format(Path<Tuple<SootMethod, Boolean>> path, SootMethod method) {
-        return format(path) + " " + method.toString();
+        return path.length() + "::" + method.toString() + "@[" + method.hashCode() + "]";
     }
 
-    boolean cycle(Stmt stmt, Path<Tuple<Stmt, Boolean>> subpath) {
+    String format(Path<Tuple<SootMethod, Boolean>> path, SootMethod method, Stmt stmt) {
+        return format(path, method) + " [" + stmt.toString() + "]@[" + stmt.hashCode() + "]";
+    }
+
+    boolean knot(Stmt stmt, Path<Tuple<Stmt, Boolean>> subpath) {
         if (subpath.empty()) {
             return false;
         }
 
         var t = subpath.head().get();
-        return !t.snd() && (stmt.equals(t.fst()) || cycle(stmt, subpath.tail().get()));
+        return !t.snd() && (stmt.equals(t.fst()) || knot(stmt, subpath.tail().get()));
     }
 
-    Tuple<Boolean, Boolean> check(SootMethod method, Path<Tuple<SootMethod, Boolean>> path) {
+    Tuple<Boolean, Boolean> knot(SootMethod method, Path<Tuple<SootMethod, Boolean>> path) {
+        return knot(method, path, false);
+    }
+    Tuple<Boolean, Boolean> knot(SootMethod method, Path<Tuple<SootMethod, Boolean>> path, boolean guard) {
         if (path.empty()) {
             return Tuple.of(false, false);
         }
 
         var t = path.head().get();
-        if (method.equals(t.fst()) || !t.snd())
+        if (t.snd()) {
+            return Tuple.of(false, false);
+        } else if (method.equals(t.fst())) {
+            return Tuple.of(true, t.snd() || guard);
+        } else {
+            return knot(method, path.tail().get(), t.snd() || guard);
+        }
     }
 }
