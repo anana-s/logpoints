@@ -1,4 +1,4 @@
-package anana5.sense.logpoints;
+package anana5.sense.logpoints.fixtures;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -8,17 +8,17 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class ExceptionalForLoop {
+public class Example {
     @FunctionalInterface
     interface ICallBack {
         public void accept(String s) throws IOException;
     }
 
     static Logger logger = LoggerFactory.getLogger(Example.class);
-    
+
     List<ICallBack> callbacks = new ArrayList<>();
 
-    public ExceptionalForLoop() {
+    public Example() {
         logger.debug("initialized");
     }
 
@@ -46,7 +46,8 @@ public class ExceptionalForLoop {
     public static void main(String[] args) {
         logger.info("started {}", LocalDateTime.now());
         Example o = new Example();
-        o.add(phrase -> logger.info("call {}", phrase));
+        o.add(phrase -> logger.info("call {} 1", phrase));
+        o.add(phrase -> logger.info("call {} 2", phrase));
         if (args.length != 0) {
             logger.error("wrong number of args");
             System.exit(1);
@@ -62,5 +63,4 @@ public class ExceptionalForLoop {
         }
         logger.info("done {}", LocalDateTime.now());
     }
-
 }

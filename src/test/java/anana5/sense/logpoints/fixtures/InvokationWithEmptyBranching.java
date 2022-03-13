@@ -1,6 +1,6 @@
 package anana5.sense.logpoints.fixtures;
 
-public class InvocationWithEmptyBranching {
+public class InvokationWithEmptyBranching {
     static void test(boolean b) {
         if (b) {
             b = b ^ b;
@@ -9,10 +9,7 @@ public class InvocationWithEmptyBranching {
         return;
     }
     public static void main(String[] args) {
-        System.out.println("sweet pineapple!");
         test(true);
-        while(true) {
-            System.out.println("sweet pineapple!");
-        }
+        System.out.println("sweet pineapple!");
     }
 }

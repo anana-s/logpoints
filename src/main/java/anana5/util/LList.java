@@ -7,7 +7,6 @@ import java.util.Iterator;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 public class LList<T> {
@@ -90,19 +89,12 @@ public class LList<T> {
         return llist;
     }
 
-    public Promise<Void> traverse(Consumer<T> consumer) {
-        return traverse(t -> {
-            consumer.accept(t);
-            return Promise.nil();
-        });
+    public Promise<Void> traverse(Function<T, Promise<Void>> consumer) {
+        return unfix.then(listF -> listF.match(() -> Promise.nil(), (t, next) -> consumer.apply(t).then($ -> next.traverse(consumer))));
     }
 
-    
-
-    public Promise<Void> traverse(Function<T, Promise<Void>> consumer) {
-        return unfix.then(listF -> listF.match(() -> Promise.nil(), (t, f) -> {
-            return consumer.apply(t).bind($ -> f.traverse(consumer));
-        }));
+    public Promise<Void> traverse(BiFunction<Promise<Void>, Promise<Void>, Promise<Void>> folder, Function<T, Promise<Void>> consumer) {
+        return fold(p -> p.then(listF -> listF.match(() -> Promise.nil(), (t, f) -> folder.apply(Promise.nil().then($ -> consumer.apply(t)), f))));
     }
 
     public Promise<Collection<T>> collect() {
@@ -110,7 +102,8 @@ public class LList<T> {
 
         return traverse(t -> {
             collection.add(t);
-        }).map(($) -> collection);
+            return Promise.nil();
+        }).map($ -> collection);
     }
 
     public <R> Promise<R> foldr(R r, BiFunction<T, R, Promise<R>> func) {
@@ -140,7 +133,7 @@ public class LList<T> {
     }
 
     public LList<T> filter(Function<? super T, Promise<Boolean>> func) {
-        var out = this.<LList<T>>foldr(LList.nil(), (head, tail) -> {
+        var out = this.<LList<T>>foldl(LList.of(), (head, tail) -> {
             return func.apply(head).then(b -> {
                 if (b) {
                     return Promise.just(LList.cons(head, tail));

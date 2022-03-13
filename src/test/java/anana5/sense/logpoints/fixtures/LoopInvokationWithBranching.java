@@ -1,12 +1,11 @@
 package anana5.sense.logpoints.fixtures;
 
-public class LoopInvoke {
-    public static void test(String s) {
+public class LoopInvokationWithBranching {
+    public static Void test(String s) {
         if (s == null) {
             System.err.println("null");
-            return;
         }
-        return;
+        return null;
     }
     public static void main(String[] args) {
         for (String arg : args) {

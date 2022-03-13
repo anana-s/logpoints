@@ -41,7 +41,7 @@ public class PrintPaths {
 
         paths.traverse(path -> {
             if (path.empty()) {
-                return;
+                return Promise.nil();
             }
 
             var sj = new StringJoiner("\t");
@@ -49,6 +49,7 @@ public class PrintPaths {
                 sj.add(String.format("nx%08x %s", vertex.id(), StmtVertexFormatter.format(vertex)));
             });
             System.out.println(sj.toString());
+            return Promise.nil();
         }).join();
     }
     

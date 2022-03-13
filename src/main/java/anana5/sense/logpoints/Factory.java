@@ -297,13 +297,15 @@ public class Factory {
     class CFGFactory {
         String sourceName;
         SootMethod method;
-        Map<Stmt, Rain<Stmt>> memo;
+        Map<Stmt, Rain<Stmt>> memo0;
+        Set<Stmt> memo1;
         ExceptionalUnitGraph cfg;
         CFGFactory(SootMethod method) {
             var body = method.retrieveActiveBody();
             if (body instanceof JimpleBody) {
                 this.method = method;
-                this.memo = new HashMap<>();
+                this.memo0 = new HashMap<>();
+                this.memo1 = new HashSet<>();
                 Factory.cpf.apply(body);
                 this.cfg = new ExceptionalUnitGraph(body);
                 this.sourceName = method.getDeclaringClass().getName() + "." + method.getName();
@@ -317,34 +319,35 @@ public class Factory {
         }
 
         private Rain<Stmt> build(LList<Stmt> stmts, Path<Tuple<SootMethod, Boolean>> path, Path<Tuple<Stmt, Boolean>> subpath, boolean guard) {
-            return Rain.merge(stmts.map(stmt -> build(stmt, path, subpath, guard)));
+            return Rain.merge(stmts.map(stmt -> {
+                var rain = build(stmt, path, subpath, guard);
+                memo0.put(stmt, rain);
+                return rain;
+            }));
         }
 
         private Rain<Stmt> build(Stmt stmt, Path<Tuple<SootMethod, Boolean>> path, Path<Tuple<Stmt, Boolean>> subpath, boolean guard) {
             // if we have already seen this stmt
-            if (memo.containsKey(stmt)) {
-                logger.trace("{} loading from cache", format(path, method, stmt));
-
-                // return from cache;
-                return memo.get(stmt);
-            }
-
-            // if there is an empty cycle
-            if (knot(stmt, subpath)) {
-                logger.trace("{} is closing an empty loop", format(path, method, stmt));
-
-                // break the cycle
-                return Rain.of();
+            if (memo0.containsKey(stmt)) {
+                // if there is an empty cycle
+                var t = knot(stmt, subpath);
+                if (t.fst() && !memo1.contains(stmt)) {
+                    if (t.snd()) {
+                        logger.trace("{} is closing an empty loop", format(path, method, stmt));
+                        return Rain.of();
+                    }
+                } else {
+                    logger.trace("{} loading from cache 0", format(path, method, stmt));
+                    return memo0.get(stmt);
+                }
             }
 
             // if stmt is a return statement
             if (stmt instanceof ReturnStmt || stmt instanceof ReturnVoidStmt) {
                 logger.trace("{} returning", format(path, method, stmt));
-
                 // stop building
-                var rain = Rain.of(Drop.of(new Box(null), Rain.of()));
-                memo.put(stmt, rain);
-                return rain;
+                memo1.add(stmt);
+                return Rain.of(Drop.of(new Box(null), Rain.of()));
             }
 
             //TODO handle exceptional dests;
@@ -374,9 +377,8 @@ public class Factory {
 
                     // keep this stmt and build drop
                     final var nextRain = build(next, path, subpath.push(Tuple.of(stmt, true)), true);
-                    var rain = Rain.of(Drop.of(new Box(stmt), nextRain));
-                    memo.put(stmt, rain);
-                    return rain;
+                    memo1.add(stmt);
+                    return Rain.of(Drop.of(new Box(stmt), nextRain));
                 }
             }
 
@@ -397,15 +399,14 @@ public class Factory {
                 }
 
                 final var returns = build(next, path, subpath.push(Tuple.of(stmt, true)), true);
-                final var resultRain = filteredRain.<Rain<Stmt>>fold(drops -> Rain.merge(drops.map(drop -> {
+                memo1.add(stmt);
+                return filteredRain.<Rain<Stmt>>fold(drops -> Rain.merge(drops.map(drop -> {
                     var s = drop.value();
                     if (s == null) {
                         return returns;
                     }
                     return Rain.of(drop);
                 })));
-                memo.put(stmt, resultRain);
-                return resultRain;
             }));
         }
 
@@ -451,34 +452,25 @@ public class Factory {
         return format(path, method) + " [" + stmt.toString() + "]@[" + stmt.hashCode() + "]";
     }
 
-    boolean knot(Stmt stmt, Path<Tuple<Stmt, Boolean>> subpath) {
-        if (subpath.empty()) {
-            return false;
-        }
-
-        var t = subpath.head().get();
-        return !t.snd() && (stmt.equals(t.fst()) || knot(stmt, subpath.tail().get()));
+    <T> Tuple<Boolean, Boolean> knot(T t, Path<Tuple<T, Boolean>> path) {
+        return knot(t, path, false);
     }
-
-    Tuple<Boolean, Boolean> knot(SootMethod method, Path<Tuple<SootMethod, Boolean>> path) {
-        return knot(method, path, false);
-    }
-    Tuple<Boolean, Boolean> knot(SootMethod method, Path<Tuple<SootMethod, Boolean>> path, boolean guard) {
+    <T> Tuple<Boolean, Boolean> knot(T t, Path<Tuple<T, Boolean>> path, boolean guard) {
         if (path.empty()) {
             return Tuple.of(false, !guard);
         }
 
-        var t = path.head().get();
-        if (t.snd()) {
-            if (method.equals(t.fst())) {
+        var tuple = path.head().get();
+        if (tuple.snd()) {
+            if (t.equals(tuple.fst())) {
                 return Tuple.of(true, false);
             } else {
-                return knot(method, path.tail().get(), true);
+                return knot(t, path.tail().get(), true);
             }
-        } else if (method.equals(t.fst())) {
+        } else if (t.equals(tuple.fst())) {
             return Tuple.of(true, !guard);
         } else {
-            return knot(method, path.tail().get(), guard);
+            return knot(t, path.tail().get(), guard);
         }
     }
 }
