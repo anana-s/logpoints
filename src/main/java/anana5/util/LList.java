@@ -106,22 +106,23 @@ public class LList<T> {
     }
 
     public Promise<Collection<T>> collect() {
-        return foldr(new ArrayList<>(), (t, out) -> {
-            out.add(t);
-            return out;
-        });
+        Collection<T> collection = new ArrayList<>();
+
+        return traverse(t -> {
+            collection.add(t);
+        }).map(($) -> collection);
     }
 
-    public <R> Promise<R> foldr(R r, BiFunction<T, R, R> func) {
-        return unfix.then(listF -> listF.match(() -> Promise.just(r), (t, next) -> Promise.just(func.apply(t, r)).then(s -> next.foldr(s, func))));
+    public <R> Promise<R> foldr(R r, BiFunction<T, R, Promise<R>> func) {
+        return unfix.then(listF -> listF.match(() -> Promise.just(r), (t, next) -> func.apply(t, r).then(s -> next.foldr(s, func))));
     }
 
-    public <R> Promise<R> foldl(R r, BiFunction<T, R, R> func) {
-        return unfix.then(listF -> listF.match(() -> Promise.just(r), (t, next) -> next.foldl(r, func).map(s -> func.apply(t, s))));
+    public <R> Promise<R> foldl(R r, BiFunction<T, R, Promise<R>> func) {
+        return unfix.then(listF -> listF.match(() -> Promise.just(r), (t, next) -> next.foldl(r, func).then(s -> func.apply(t, s))));
         //return fold(p -> p.then(listF -> listF.match(() -> Promise.just(r), (s, next) -> next.then(t -> func.apply(s, t)))));
     }
 
-    public <R> R fold(Function<Promise<ListF<T, R>>, R> func) {
+    public <R> Promise<R> fold(Function<Promise<ListF<T, Promise<R>>>, Promise<R>> func) {
         return func.apply(unfix.map(listF -> listF.fmap(f -> f.fold(func))));
     }
 
@@ -138,13 +139,15 @@ public class LList<T> {
         return unfix.map(listF -> listF.match(() -> true, (t, f) -> false));
     }
 
-    public LList<T> filter(Predicate<? super T> func) {
-        Promise<LList<T>> out = foldl(LList.nil(), (head, tail) -> {
-            if (func.test(head)) {
-                return LList.cons(head, tail);
-            } else {
-                return tail;
-            }
+    public LList<T> filter(Function<? super T, Promise<Boolean>> func) {
+        var out = this.<LList<T>>foldr(LList.nil(), (head, tail) -> {
+            return func.apply(head).then(b -> {
+                if (b) {
+                    return Promise.just(LList.cons(head, tail));
+                } else {
+                    return Promise.just(tail);
+                }
+            });
         });
 
         return LList.bind(out);

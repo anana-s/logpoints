@@ -7,9 +7,11 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -216,26 +218,34 @@ public class Factory {
         }
 
         return build(LList.from(Scene.v().getEntryPoints()), new Path<>())
-            .fold(droplets -> Rain.fix(droplets.filter(droplet -> droplet.value() != null)));
+            .fold(droplets -> Rain.fix(droplets.filter(droplet -> Promise.just(droplet.value() != null))));
     }
 
     private Rain<Stmt> build(LList<SootMethod> methods, Path<Tuple<SootMethod, Boolean>> path) {
         // build clinit first
-        final var cs = methods.filter(method ->  method.getName().equals("<clinit>"));
-        final var ms = methods.filter(method -> !method.getName().equals("<clinit>"));
+        final var cs = methods.filter(method -> Promise.just(method.getName().equals("<clinit>")));
+        final var ms = methods.filter(method -> Promise.just(!method.getName().equals("<clinit>")));
 
-        final var cr = Rain.bind(Rain.<Stmt>merge(cs.map(method -> build(method, path))).resolve());
-        final var mr = Promise.just(() -> Rain.bind(Rain.<Stmt>merge(ms.map(method -> build(method, path))).resolve()));
+        final Rain<Stmt> cr;
+        final Rain<Stmt> mr;
+
+        if (logger.isTraceEnabled()) {
+            cr = Rain.bind(Rain.<Stmt>merge(cs.map(method -> build(method, path))).resolve());
+            mr = Rain.bind(Rain.<Stmt>merge(ms.map(method -> build(method, path))).resolve());
+        } else {
+            cr = Rain.<Stmt>merge(cs.map(method -> build(method, path)));
+            mr = Rain.<Stmt>merge(ms.map(method -> build(method, path)));
+        }
 
         return Rain.<Stmt>bind(cr.empty().map(e -> {
             if (e) {
-                return mr.join();
+                return mr;
             }
 
             return cr.<Rain<Stmt>>fold(ds -> Rain.merge(ds.map(d -> {
                 var stmt = d.value();
                 if (stmt == null) {
-                    return mr.join();
+                    return mr;
                 }
                 return Rain.of(d);
             })));
@@ -311,22 +321,29 @@ public class Factory {
         }
 
         private Rain<Stmt> build(Stmt stmt, Path<Tuple<SootMethod, Boolean>> path, Path<Tuple<Stmt, Boolean>> subpath, boolean guard) {
+            // if we have already seen this stmt
             if (memo.containsKey(stmt)) {
-                if (knot(stmt, subpath)) {
-                    // break cycles
-                    logger.trace("{} is closing an empty loop", format(path, method, stmt));
-                    return Rain.of();
-                }
+                logger.trace("{} loading from cache", format(path, method, stmt));
+
                 // return from cache;
-                logger.trace("{} loaded from cache", format(path, method, stmt));
                 return memo.get(stmt);
             }
 
-            // return stmt
+            // if there is an empty cycle
+            if (knot(stmt, subpath)) {
+                logger.trace("{} is closing an empty loop", format(path, method, stmt));
+
+                // break the cycle
+                return Rain.of();
+            }
+
+            // if stmt is a return statement
             if (stmt instanceof ReturnStmt || stmt instanceof ReturnVoidStmt) {
+                logger.trace("{} returning", format(path, method, stmt));
+
+                // stop building
                 var rain = Rain.of(Drop.of(new Box(null), Rain.of()));
                 memo.put(stmt, rain);
-                logger.trace("{} returning", format(path, method, stmt));
                 return rain;
             }
 
@@ -334,71 +351,76 @@ public class Factory {
 
             List<Unit> sucs = cfg.getUnexceptionalSuccsOf(stmt);
             List<Integer> code = sucs.stream().map(Object::hashCode).collect(Collectors.toList());
-            LList<Stmt> rets = LList.from(sucs).map(unit -> (Stmt)unit);
+            LList<Stmt> next = LList.from(sucs).map(unit -> (Stmt)unit);
 
-            if (stmt.containsInvokeExpr()) {
-                SootMethodRef methodRef = stmt.getInvokeExpr().getMethodRef();
-                SootClass declaringClass = methodRef.getDeclaringClass();
-                String methodName = declaringClass.getName() + "." + methodRef.getName();
-                for (Pattern pattern : Factory.this.tags) {
-                    if (pattern.matcher(methodName).find()) {
-                        stmt.addTag(new SourceMapTag(this.sourceName, stmt.getJavaSourceStartLineNumber(), stmt.getJavaSourceStartColumnNumber()));
-                        logger.trace("{} matched with tag {}, reporting with successors {}", format(path, method, stmt), pattern.toString(), code);
-                        var rain = Rain.of(Drop.of(new Box(stmt), build(rets, path, subpath.push(Tuple.of(stmt, true)), true)));
-                        memo.put(stmt, rain);
-                        return rain;
-                    }
+            if (!stmt.containsInvokeExpr()) {
+                // skip this statement
+                logger.trace("{} skipped with successors {}", format(path, method, stmt), code);
+                return build(next, path, subpath.push(Tuple.of(stmt, false)), guard);
+            }
+
+            // stmt is an invokation, so get call information
+            SootMethodRef methodRef = stmt.getInvokeExpr().getMethodRef();
+            SootClass declaringClass = methodRef.getDeclaringClass();
+            String methodName = declaringClass.getName() + "." + methodRef.getName();
+
+            // check if stmt needs to be kept
+            for (Pattern pattern : Factory.this.tags) {
+                if (pattern.matcher(methodName).find()) {
+                    logger.trace("{} matched with tag {}, continuing with successors {}", format(path, method, stmt), pattern.toString(), code);
+
+                    // tag the stmt with source information
+                    stmt.addTag(new SourceMapTag(this.sourceName, stmt.getJavaSourceStartLineNumber(), stmt.getJavaSourceStartColumnNumber()));
+
+                    // keep this stmt and build drop
+                    final var nextRain = build(next, path, subpath.push(Tuple.of(stmt, true)), true);
+                    var rain = Rain.of(Drop.of(new Box(stmt), nextRain));
+                    memo.put(stmt, rain);
+                    return rain;
+                }
+            }
+
+            // stmt is not kept, so expand the invokation
+            logger.trace("{} expanding with successors {}", format(path, method, stmt), code);
+
+            // get rain of called methods
+            final var methods = LList.from(cg.edgesOutOf(stmt)).map(edge -> edge.tgt());
+            final var rain = Factory.this.build(methods, path.push(Tuple.of(this.method, guard)));
+
+            // filter out empty paths
+            final var filteredRain = Rain.fix(rain.unfix().filter(drop -> Promise.just(drop.value() != null)));
+
+            // return the connected the rain
+            return Rain.<Stmt>bind(filteredRain.empty().map(e -> {
+                if (e) {
+                    return build(next, path, subpath.push(Tuple.of(stmt, false)), guard);
                 }
 
-                // get subrain
-                final var methods = LList.from(cg.edgesOutOf(stmt)).map(edge -> edge.tgt());
-
-                var rain = Rain.bind(methods.empty().<Rain<Stmt>>map(e -> {
-                    if (e) {
-                        // no method resolved
-                        logger.trace("{} failed to resolve, skipping with successors {}", format(path, method, stmt), code);
-                        return build(rets, path, subpath.push(Tuple.of(stmt, false)), guard);
+                final var returns = build(next, path, subpath.push(Tuple.of(stmt, true)), true);
+                final var resultRain = filteredRain.<Rain<Stmt>>fold(drops -> Rain.merge(drops.map(drop -> {
+                    var s = drop.value();
+                    if (s == null) {
+                        return returns;
                     }
-                    logger.trace("{} expanding with successors {}", format(path, method, stmt), code);
-                    final var r = Factory.this.build(methods, path.push(Tuple.of(this.method, guard)));
-                    final var guarded = build(rets, path, subpath.push(Tuple.of(stmt, false)), guard);
-                    final var unguarded = build(rets, path, subpath.push(Tuple.of(stmt, true)), true);
-                    return Rain.<Stmt>merge(r.unfix().<Rain<Stmt>>map(d -> {
-                        var s = d.value();
-                        if (s == null) {
-                            return guarded;
-                        }
-                        return r.fold(d$s -> Rain.merge(d$s.map(d$ -> {
-                            var s$ = d$.value();
-                            if (s$ == null) {
-                                return unguarded;
-                            }
-                            return Rain.of(d$);
-                        })));
-                    }));
-                }));
-                rain = deduplicate(rain);
-                memo.put(stmt, rain);
-                return rain;
-            } else {
-                var rain = build(rets, path, subpath.push(Tuple.of(stmt, false)), guard);
-                logger.trace("{} skipped with successors {}", format(path, method, stmt), code);
-                rain = deduplicate(rain);
-                memo.put(stmt, rain);
-                return rain;
-            }
+                    return Rain.of(drop);
+                })));
+                memo.put(stmt, resultRain);
+                return resultRain;
+            }));
         }
 
-        private Rain<Stmt> deduplicate(Rain<Stmt> rain) {
-            Set<Vertex<Stmt>> seen = new HashSet<>();
-            return Rain.<Stmt>bind(rain.unfix().foldl(LList.<Drop<Stmt, Rain<Stmt>>>of(), (drop, next) -> {
+        private Rain<Stmt> process(Rain<Stmt> rain) {
+            var seen = new HashSet<>();
+            var r = rain.unfix().filter(drop -> {
                 var box = drop.vertex();
-                if (seen.contains(box)) {
-                    return next;
+                if (seen.contains(drop.vertex())) {
+                    return Promise.just(false);
                 }
                 seen.add(box);
-                return LList.cons(drop, next);
-            }).then(next -> Promise.just(Rain.<Stmt>fix(next))));
+                return Promise.just(true);
+            });
+
+            return Rain.fix(r);
         }
 
         Rain<Stmt> context(Rain<Stmt> rain, Rain<Stmt> guardedRets, Rain<Stmt> unguardedRets, boolean shouldGuard, Set<Vertex<?>> seen) {
@@ -443,16 +465,20 @@ public class Factory {
     }
     Tuple<Boolean, Boolean> knot(SootMethod method, Path<Tuple<SootMethod, Boolean>> path, boolean guard) {
         if (path.empty()) {
-            return Tuple.of(false, false);
+            return Tuple.of(false, !guard);
         }
 
         var t = path.head().get();
         if (t.snd()) {
-            return Tuple.of(false, false);
+            if (method.equals(t.fst())) {
+                return Tuple.of(true, false);
+            } else {
+                return knot(method, path.tail().get(), true);
+            }
         } else if (method.equals(t.fst())) {
-            return Tuple.of(true, t.snd() || guard);
+            return Tuple.of(true, !guard);
         } else {
-            return knot(method, path.tail().get(), t.snd() || guard);
+            return knot(method, path.tail().get(), guard);
         }
     }
 }

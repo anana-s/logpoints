@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -80,20 +81,18 @@ public class Rain<T> {
      * @param visitor
      * @return Promise<Void>
      */
-    public Promise<Void> traverse(BiConsumer<Vertex<T>, Vertex<T>> visitor) {
+    public Promise<Void> traverse(BiFunction<Vertex<T>, Vertex<T>, Promise<Void>> visitor) {
         return traverse(null, visitor, new HashSet<>());
     }
 
-    private Promise<Void> traverse(Vertex<T> source, BiConsumer<Vertex<T>, Vertex<T>> visitor, Set<Vertex<T>> visited) {
+    private Promise<Void> traverse(Vertex<T> source, BiFunction<Vertex<T>, Vertex<T>, Promise<Void>> visitor, Set<Vertex<T>> visited) {
         return unfix.traverse(droplet -> {
             var target = droplet.vertex();
             if (visited.contains(target)) {
-                visitor.accept(source, target);
-                return Promise.nil();
+                return visitor.apply(source, target);
             }
             visited.add(target);
-            visitor.accept(source, target);
-            return droplet.next().traverse(target, visitor, visited);
+            return visitor.apply(source, target).then($ -> droplet.next().traverse(target, visitor, visited));
         });
     }
 
@@ -101,19 +100,18 @@ public class Rain<T> {
      * @param visitor
      * @return Promise<Void>
      */
-    public Promise<Void> traverse(Consumer<Vertex<T>> visitor) {
+    public Promise<Void> traverse(Function<Vertex<T>, Promise<Void>> visitor) {
         return traverse(visitor, new HashSet<>());
     }
 
-    private Promise<Void> traverse(Consumer<Vertex<T>> visitor, Set<Vertex<T>> visited) {
+    private Promise<Void> traverse(Function<Vertex<T>, Promise<Void>> visitor, Set<Vertex<T>> visited) {
         return unfix.traverse(droplet -> {
             var target = droplet.vertex();
             if (visited.contains(target)) {
                 return Promise.nil();
             }
             visited.add(target);
-            visitor.accept(target);
-            return droplet.next().traverse(visitor, visited);
+            return visitor.apply(target).then($ -> droplet.next().traverse(visitor, visited));
         });
     }
 
@@ -150,7 +148,7 @@ public class Rain<T> {
     }
 
     public Rain<T> filter(Predicate<? super Vertex<T>> predicate) {
-        var droplets = unfix().filter(droplet -> predicate.test(droplet.vertex()));
+        var droplets = unfix().filter(droplet -> Promise.just(predicate.test(droplet.vertex())));
         droplets = droplets.map(droplet -> droplet.fmap(let -> let.filter(predicate)));
         return new Rain<>(droplets);
     }

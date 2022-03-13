@@ -5,6 +5,7 @@ import java.util.Set;
 
 import anana5.graph.Vertex;
 import anana5.util.LList;
+import anana5.util.Promise;
 import anana5.util.Tuple;
 import soot.jimple.Stmt;
 
@@ -22,7 +23,7 @@ public class ComputePrintlnRatio {
                     return LList.cons(Tuple.of(.0, .0), LList.of());
                 }
                 seen.add(droplet.vertex());
-                return LList.bind(droplet.next().isEmpty().map(isEmpty -> {
+                return LList.bind(droplet.next().empty().map(isEmpty -> {
                     if (droplet.vertex().value().getInvokeExpr().getMethodRef().getName().equals("println")) {
                         if (isEmpty) {
                             return LList.cons(Tuple.of(1., 1.), LList.of());
@@ -41,7 +42,7 @@ public class ComputePrintlnRatio {
         });
 
         Double average = ratios.foldr(Tuple.of(.0, .0), (cur, acc) -> {
-            return Tuple.of((cur.fst() / cur.snd()) + acc.fst(), acc.snd() + 1);
+            return Promise.just(Tuple.of((cur.fst() / cur.snd()) + acc.fst(), acc.snd() + 1));
         }).map(tuple -> {
             return tuple.fst() / tuple.snd();
         }).join();

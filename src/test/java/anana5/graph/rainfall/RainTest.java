@@ -63,6 +63,7 @@ public class RainTest {
         var actual = new ArrayList<>();
         graph.get().traverse(v -> {
             actual.add(v.value());
+            return Promise.nil();
         }).join();
         assertEquals(Arrays.asList(1, 2, 4, 5, 3), actual);
     }
@@ -76,6 +77,7 @@ public class RainTest {
 
         copy.traverse(v -> {
             actual.add(v.value());
+            return Promise.nil();
         }).join();
     
         assertEquals(Arrays.asList(2, 3, 5, 6, 4), actual);
@@ -83,13 +85,13 @@ public class RainTest {
 
     @Test
     void fold() {
-        Integer actual = graph.get().<Promise<Integer>>fold(drops -> drops.foldr(Promise.just(0), (drop, acc) -> drop.next().then(n -> acc.then(a -> Promise.just(a + n + drop.value())))).then(Function.identity())).join();
+        Integer actual = graph.get().<Promise<Integer>>fold(drops -> drops.foldr(0, (drop, acc) -> drop.next().map(n -> acc + n + drop.value()))).join();
         assertEquals(24, actual);
     }
 
     @Test
     void paramorph() {
-        Integer actual = Rain.<LList<Integer>, Integer>unfold(a, a$ -> LList.bind(a$.match(() -> LList.nil(), (x, xs) -> LList.of(new Drop<>(new V(x), xs)))))
+        Integer actual = Rain.<LList<Integer>, Integer>unfold(a, a$ -> LList.bind(a$.match(() -> LList.of(), (x, xs) -> LList.of(new Drop<>(new V(x), xs)))))
             .<Promise<Integer>>fold(droplets -> droplets.head().then(maybe -> maybe.match(() -> Promise.just(0), droplet -> droplet.next().map(x -> x + droplet.value())))).join();
         assertEquals(6, actual);
     }
@@ -108,6 +110,7 @@ public class RainTest {
 
         rain.traverse((v) -> {
             actual.add(v.value());
+            return Promise.nil();
         }).join();
         assertEquals(Arrays.asList(0, 1, 2), actual);
     }
@@ -121,7 +124,7 @@ public class RainTest {
 
     @Test
     void map() {
-        var actual = graph.get().map(v -> V.of(v.value() + 1)).<Integer>fold(drops -> drops.foldl(0, (drop, acc) -> drop.next() + drop.value() + acc).join());
+        var actual = graph.get().map(v -> V.of(v.value() + 1)).<Integer>fold(drops -> drops.foldl(0, (drop, acc) -> Promise.just(drop.next() + drop.value() + acc)).join());
         assertEquals(31, actual);
     }
 
@@ -130,6 +133,7 @@ public class RainTest {
         var actual = new ArrayList<>();
         Rain.bind(graph.get().resolve()).traverse(v -> {
             actual.add(v.value());
+            return Promise.nil();
         }).join();
         assertEquals(Arrays.asList(1, 2, 4, 5, 3), actual);
     }

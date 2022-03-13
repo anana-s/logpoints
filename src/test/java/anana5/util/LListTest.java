@@ -17,13 +17,13 @@ class LListTest {
 
     @Test
     void foldr() {
-        var actual = LList.bind(a.foldr(LList.of(), (a, b) -> b.push(a))).collect().join();
+        var actual = LList.bind(a.foldr(LList.of(), (a, b) -> Promise.just(b.push(a)))).collect().join();
         assertEquals(Arrays.asList(3, 2, 1), actual);
     }
 
     @Test
     void foldl() {
-        var actual = LList.bind(a.foldl(LList.of(), (a, b) -> b.push(a))).collect().join();
+        var actual = LList.bind(a.foldl(LList.of(), (a, b) -> Promise.just(b.push(a)))).collect().join();
         assertEquals(Arrays.asList(1, 2, 3), actual);
     }
 
@@ -53,7 +53,7 @@ class LListTest {
 
     @Test
     void filter() {
-        var out = a.filter(value -> value != 2);
+        var out = a.filter(value -> Promise.just(value != 2));
         out.collect().bind(actual -> {
             assertEquals(Arrays.asList(1,3), actual);
             return Promise.nil();

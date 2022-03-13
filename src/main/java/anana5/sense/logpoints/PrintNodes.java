@@ -5,6 +5,7 @@ import java.util.Set;
 import java.util.StringJoiner;
 
 import anana5.graph.Vertex;
+import anana5.util.Promise;
 import soot.jimple.Stmt;
 
 public class PrintNodes {
@@ -23,6 +24,7 @@ public class PrintNodes {
                 sj.add(vertex.value().getTag("SourceMapTag").toString());
                 System.out.println(sj.toString());
             }
+            return Promise.nil();
         });
 
         task.join();

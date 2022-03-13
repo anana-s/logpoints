@@ -6,6 +6,7 @@ import java.util.StringJoiner;
 import anana5.graph.Vertex;
 import anana5.util.LList;
 import anana5.util.Path;
+import anana5.util.Promise;
 import soot.jimple.Stmt;
 
 public class PrintPaths {
@@ -14,7 +15,7 @@ public class PrintPaths {
 
         var graph = Factory.v().graph();
 
-        graph.traverse(($, $$) -> {}).join();
+        graph.traverse(($, $$) -> Promise.nil()).join();
 
         var seen = new HashMap<Vertex<Stmt>, LList<Path<Vertex<Stmt>>>>();
         LList<Path<Vertex<Stmt>>> paths = graph.fold(droplets -> droplets.flatmap(droplet -> {
