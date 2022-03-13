@@ -123,6 +123,10 @@ public class LList<T> {
         return new LList<>(promise.then(lList -> lList.unfix));
     }
 
+    public static <T> LList<T> bind(LList<Promise<T>> promises) {
+        return LList.bind(Promise.all(promises));
+    }
+
     @Deprecated
     public Promise<Boolean> isEmpty() {
         return unfix.map(listF -> listF.match(() -> true, (t, f) -> false));

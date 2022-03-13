@@ -298,14 +298,12 @@ public class Factory {
         String sourceName;
         SootMethod method;
         Map<Stmt, Rain<Stmt>> memo0;
-        Set<Stmt> memo1;
         ExceptionalUnitGraph cfg;
         CFGFactory(SootMethod method) {
             var body = method.retrieveActiveBody();
             if (body instanceof JimpleBody) {
                 this.method = method;
                 this.memo0 = new HashMap<>();
-                this.memo1 = new HashSet<>();
                 Factory.cpf.apply(body);
                 this.cfg = new ExceptionalUnitGraph(body);
                 this.sourceName = method.getDeclaringClass().getName() + "." + method.getName();
@@ -315,39 +313,34 @@ public class Factory {
         }
 
         public Rain<Stmt> build(Path<Tuple<SootMethod, Boolean>> path) {
-            return build(LList.from(cfg.getHeads()).map(unit -> (Stmt)unit), path, new Path<>(), false);
+            return Rain.bind(build(LList.from(cfg.getHeads()).map(unit -> (Stmt)unit), path, new Path<>(), false).map(Tuple::fst));
         }
 
-        private Rain<Stmt> build(LList<Stmt> stmts, Path<Tuple<SootMethod, Boolean>> path, Path<Tuple<Stmt, Boolean>> subpath, boolean guard) {
-            return Rain.merge(stmts.map(stmt -> {
-                var rain = build(stmt, path, subpath, guard);
-                memo0.put(stmt, rain);
-                return rain;
-            }));
+        private Promise<Tuple<Rain<Stmt>, Boolean>> build(LList<Stmt> stmts, Path<Tuple<SootMethod, Boolean>> path, Path<Tuple<Stmt, Boolean>> subpath, boolean guard) {
+            var tuple = Tuple.unzip(LList.bind(stmts.map(stmt -> build(stmt, path, subpath, guard))));
+            return tuple.snd().foldr(true, (a, b) -> Promise.just(a && b)).map(cachable -> Tuple.of(Rain.merge(tuple.fst()), cachable));
         }
 
-        private Rain<Stmt> build(Stmt stmt, Path<Tuple<SootMethod, Boolean>> path, Path<Tuple<Stmt, Boolean>> subpath, boolean guard) {
+        private Promise<Tuple<Rain<Stmt>, Boolean>> build(Stmt stmt, Path<Tuple<SootMethod, Boolean>> path, Path<Tuple<Stmt, Boolean>> subpath, boolean guard) {
             // if we have already seen this stmt
             if (memo0.containsKey(stmt)) {
-                // if there is an empty cycle
-                var t = knot(stmt, subpath);
-                if (t.fst() && !memo1.contains(stmt)) {
-                    if (t.snd()) {
-                        logger.trace("{} is closing an empty loop", format(path, method, stmt));
-                        return Rain.of();
-                    }
-                } else {
-                    logger.trace("{} loading from cache 0", format(path, method, stmt));
-                    return memo0.get(stmt);
-                }
+                logger.trace("{} loading from cache 0", format(path, method, stmt));
+                return Promise.just(Tuple.of(memo0.get(stmt), true));
+            }
+            // if there is an empty cycle
+            var knot = knot(stmt, subpath);
+            if (knot.fst() && knot.snd()) {
+                logger.trace("{} is closing an empty loop", format(path, method, stmt));
+                return Promise.just(Tuple.of(Rain.of(), false));
             }
 
             // if stmt is a return statement
             if (stmt instanceof ReturnStmt || stmt instanceof ReturnVoidStmt) {
                 logger.trace("{} returning", format(path, method, stmt));
                 // stop building
-                memo1.add(stmt);
-                return Rain.of(Drop.of(new Box(null), Rain.of()));
+                var out =  Rain.of(Drop.of(new Box(null), Rain.of()));
+                memo0.put(stmt, out);
+                return Promise.just(Tuple.of(out, true));
             }
 
             //TODO handle exceptional dests;
@@ -359,7 +352,13 @@ public class Factory {
             if (!stmt.containsInvokeExpr()) {
                 // skip this statement
                 logger.trace("{} skipped with successors {}", format(path, method, stmt), code);
-                return build(next, path, subpath.push(Tuple.of(stmt, false)), guard);
+                return build(next, path, subpath.push(Tuple.of(stmt, false)), guard).map(tuple -> {
+                    var rain = process(tuple.fst());
+                    if (tuple.snd()) {
+                        memo0.put(stmt, rain);
+                    }
+                    return tuple;
+                });
             }
 
             // stmt is an invokation, so get call information
@@ -376,9 +375,10 @@ public class Factory {
                     stmt.addTag(new SourceMapTag(this.sourceName, stmt.getJavaSourceStartLineNumber(), stmt.getJavaSourceStartColumnNumber()));
 
                     // keep this stmt and build drop
-                    final var nextRain = build(next, path, subpath.push(Tuple.of(stmt, true)), true);
-                    memo1.add(stmt);
-                    return Rain.of(Drop.of(new Box(stmt), nextRain));
+                    var succs = Rain.bind(build(next, path, subpath.push(Tuple.of(stmt, true)), true).map(Tuple::fst));
+                    var rain = Rain.of(Drop.of(new Box(stmt), succs));
+                    memo0.put(stmt, rain);
+                    return Promise.just(Tuple.of(rain, true));
                 }
             }
 
@@ -393,21 +393,28 @@ public class Factory {
             final var filteredRain = Rain.fix(rain.unfix().filter(drop -> Promise.just(drop.value() != null)));
 
             // return the connected the rain
-            return Rain.<Stmt>bind(filteredRain.empty().map(e -> {
+            return filteredRain.empty().then(e -> {
                 if (e) {
-                    return build(next, path, subpath.push(Tuple.of(stmt, false)), guard);
+                    return build(next, path, subpath.push(Tuple.of(stmt, false)), guard).map(tuple -> {
+                        var out = tuple.fst();
+                        if (tuple.snd()) {
+                            memo0.put(stmt, out);
+                        }
+                        return Tuple.of(out, tuple.snd());
+                    });
                 }
 
-                final var returns = build(next, path, subpath.push(Tuple.of(stmt, true)), true);
-                memo1.add(stmt);
-                return filteredRain.<Rain<Stmt>>fold(drops -> Rain.merge(drops.map(drop -> {
+                var returns = Rain.bind(build(next, path, subpath.push(Tuple.of(stmt, true)), true).map(Tuple::fst));
+                var resultRain = filteredRain.<Rain<Stmt>>fold(drops -> Rain.merge(drops.map(drop -> {
                     var s = drop.value();
                     if (s == null) {
                         return returns;
                     }
                     return Rain.of(drop);
                 })));
-            }));
+                memo0.put(stmt, resultRain);
+                return Promise.just(Tuple.of(resultRain, true));
+            });
         }
 
         private Rain<Stmt> process(Rain<Stmt> rain) {
@@ -461,16 +468,10 @@ public class Factory {
         }
 
         var tuple = path.head().get();
-        if (tuple.snd()) {
-            if (t.equals(tuple.fst())) {
-                return Tuple.of(true, false);
-            } else {
-                return knot(t, path.tail().get(), true);
-            }
-        } else if (t.equals(tuple.fst())) {
-            return Tuple.of(true, !guard);
+        if (t.equals(tuple.fst())) {
+            return Tuple.of(true, !(guard || tuple.snd()));
         } else {
-            return knot(t, path.tail().get(), guard);
+            return knot(t, path.tail().get(), guard || tuple.snd());
         }
     }
 }

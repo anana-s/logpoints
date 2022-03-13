@@ -4,7 +4,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public class Promise<T> implements Computation<T> {
+public class Promise<T> implements Computation<T>, Supplier<T> {
     private boolean resolved;
     private T value;
 
@@ -24,10 +24,6 @@ public class Promise<T> implements Computation<T> {
         promise.accept(this::resolve);
     }
 
-    public void resolve() {
-        resolved = true;
-    }
-
     public void resolve(T t) {
         if (!resolved) {
             value = t;
@@ -36,7 +32,9 @@ public class Promise<T> implements Computation<T> {
     }
 
     public static <T> Promise<T> just(T t) {
-        return Promise.from(Computation.just(t));
+        return new Promise<>(resolve -> {
+            resolve.accept(t);
+        });
     }
 
     public static <T> Promise<T> just(Supplier<T> supplier) {
@@ -67,7 +65,7 @@ public class Promise<T> implements Computation<T> {
         @Override
         public void resolve(T t) {
             super.resolve(t);
-            c = null;
+            c = null; // release computation
         }
     }
 
@@ -117,6 +115,7 @@ public class Promise<T> implements Computation<T> {
         return value;
     }
     
+    @Override
     public T get() throws Unresolved {
         if (!resolved) {
             throw new Unresolved(this);
@@ -125,6 +124,7 @@ public class Promise<T> implements Computation<T> {
     }
 
     public static <T> Promise<LList<T>> all(LList<Promise<T>> promises) {
-        return promises.fold(p -> p.then(listF -> listF.match(() -> Promise.nil(), (pT, pAcc) -> pT.then(t -> pAcc.then(acc -> Promise.just(LList.cons(t, acc)))))));
+        return promises.foldl(LList.of(), (p, acc) -> p.map(x -> LList.cons(x, acc)));
+        // return promises.fold(p -> p.then(listF -> listF.match(() -> Promise.nil(), (pT, pAcc) -> pT.then(t -> pAcc.then(acc -> Promise.just(LList.cons(t, acc)))))));
     }
 }
