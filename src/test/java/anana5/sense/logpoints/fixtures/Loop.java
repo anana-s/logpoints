@@ -7,10 +7,5 @@ public class Loop {
                 System.out.println("pineapple!");
             }
         }
-        System.out.println("pineapple!");
-        System.out.println("pineapple!");
-        System.out.println("pineapple!");
-        System.out.println("pineapple!");
-        System.out.println("pineapple!");
     }
 }

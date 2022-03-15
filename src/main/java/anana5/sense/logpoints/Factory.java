@@ -199,10 +199,10 @@ public class Factory {
     }
 
     public Rain<Box<Stmt>.Ref> graph() {
-        return build();
+        return Rain.bind(build());
     }
 
-    private Rain<Box<Stmt>.Ref> build() {
+    private Promise<Rain<Box<Stmt>.Ref>> build() {
         LocalDateTime start = LocalDateTime.now();
         logger.debug("started at {}", start);
         Runnable exitHook = () -> {
@@ -217,11 +217,12 @@ public class Factory {
             this.cg = Scene.v().getCallGraph();
         }
 
-        return build(LList.from(Scene.v().getEntryPoints()), new Path<>())
-            .fold(drops -> Rain.fix(drops.filter(drop -> Promise.just(!drop.get().sentinel()))));
+        return build(LList.from(Scene.v().getEntryPoints()), new Path<>()).fmap(rain -> {
+            return rain.fold(drops -> Rain.fix(drops.filter(drop -> Promise.just(!drop.get().sentinel()))));
+        });
     }
 
-    private Rain<Box<Stmt>.Ref> build(LList<SootMethod> methods, Path<Tuple<SootMethod, Boolean>> path) {
+    private Promise<Rain<Box<Stmt>.Ref>> build(LList<SootMethod> methods, Path<Tuple<SootMethod, Boolean>> path) {
         // build clinit first
         var cs = methods.filter(method -> Promise.just(method.getName().equals("<clinit>")));
         var ms = methods.filter(method -> Promise.just(!method.getName().equals("<clinit>")));
@@ -230,14 +231,14 @@ public class Factory {
         Rain<Box<Stmt>.Ref> mr;
 
         if (logger.isTraceEnabled()) {
-            cr = Rain.merge(cs.map(method -> build(method, path))).resolve();
-            mr = Rain.merge(ms.map(method -> build(method, path))).resolve();
+            cr = Rain.merge(LList.bind(cs.map(method -> build(method, path)))).resolve();
+            mr = Rain.merge(LList.bind(ms.map(method -> build(method, path)))).resolve();
         } else {
-            cr = Rain.merge(cs.map(method -> build(method, path)));
-            mr = Rain.merge(ms.map(method -> build(method, path)));
+            cr = Rain.merge(LList.bind(cs.map(method -> build(method, path))));
+            mr = Rain.merge(LList.bind(ms.map(method -> build(method, path))));
         }
 
-        return Rain.bind(cr.empty().fmap(e -> {
+        return cr.empty().fmap(e -> {
             if (e) {
                 return mr;
             }
@@ -248,21 +249,21 @@ public class Factory {
                 }
                 return Rain.of(drop);
             })));
-        }));
+        });
     }
 
     private final Box<Stmt> box = new Box<>();
 
-    private Rain<Box<Stmt>.Ref> build(SootMethod method, Path<Tuple<SootMethod, Boolean>> path) {
+    private Promise<Rain<Box<Stmt>.Ref>> build(SootMethod method, Path<Tuple<SootMethod, Boolean>> path) {
         var knot = knot(method, path); // fst is recursive, snd is knot
         if (knot.fst()) {
             if (knot.snd()) {
                 // break empty cycle
                 logger.trace("{} is closing an empty loop", format(path, method));
-                return Rain.of();
+                return Promise.just(Rain.of());
             } else {
                 logger.trace("{} loaded from cache", format(path, method));
-                return memo.get(method);
+                return Promise.just(memo.get(method));
             }
         }
 
@@ -270,33 +271,33 @@ public class Factory {
             // map to new boxes
             logger.trace("{} loaded from cache in new context", format(path, method));
             Box<Stmt> box = new Box<>();
-            return memo.get(method).map(v -> box.copy(v));
+            return Promise.just(memo.get(method).map(v -> box.copy(v)));
         }
 
         if (method.isPhantom()){
             logger.trace("{} skipped due to being phantom", format(path, method));
-            return Rain.of(Drop.of(box.sentinel(), Rain.of()));
+            return Promise.just(Rain.of(Drop.of(box.sentinel(), Rain.of())));
         }
 
         if (!method.isConcrete()) {
             logger.trace("{} skipped due to not being concrete", format(path, method));
-            return Rain.of(Drop.of(box.sentinel(), Rain.of()));
+            return Promise.just(Rain.of(Drop.of(box.sentinel(), Rain.of())));
         }
 
         if (method.getDeclaringClass().isLibraryClass()) {
             logger.trace("{} skipped due to being library method", format(path, method));
-            return Rain.of(Drop.of(box.sentinel(), Rain.of()));
+            return Promise.just(Rain.of(Drop.of(box.sentinel(), Rain.of())));
         }
 
         var builder = new CFGFactory(method);
         logger.trace("{} loading", format(path, method));
         var rain = builder.build(path);
-        return Rain.bind(rain.empty().fmap(e -> {
+        return rain.empty().fmap(e -> {
             if (!e) {
                 memo.put(method, rain);
             }
             return rain;
-        }));
+        });
     }
 
     class CFGFactory {
@@ -411,7 +412,7 @@ public class Factory {
                     });
                 }
 
-                Rain<Box<Stmt>.Ref> subrain = Factory.this.build(methods, path.push(Tuple.of(method, guard)));
+                Rain<Box<Stmt>.Ref> subrain = Rain.bind(Factory.this.build(methods, path.push(Tuple.of(method, guard))));
                 var unguarded = Rain.bind(Promise.just(() -> process(build(next, path, subpath.push(Tuple.of(stmt, false)), guard))));
                 var guarded = Rain.bind(Promise.just(() -> process(build(next, path, subpath.push(Tuple.of(stmt, true)), true))));
                 var rain = Rain.merge(subrain.unfix().map(drop -> {
