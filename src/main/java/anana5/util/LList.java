@@ -28,7 +28,7 @@ public class LList<T> {
     public static <T> LList<T> cons(T item, LList<T> tail) {
         return LList.fix(Promise.just(ListF.cons(item, tail)));
     }
-    
+
     @SafeVarargs
     public static <T> LList<T> of(T... ts) {
         return LList.from(Arrays.asList(ts));
@@ -49,7 +49,7 @@ public class LList<T> {
     }
 
     public static <S, T> LList<T> unfold(S s, Function<S, Promise<ListF<T, S>>> func) {
-        return LList.fix(func.apply(s).map(listF -> listF.fmap(s$ -> LList.unfold(s$, func))));
+        return LList.fix(func.apply(s).fmap(listF -> listF.fmap(s$ -> LList.unfold(s$, func))));
     }
 
     public LList<T> push(T item) {
@@ -57,25 +57,25 @@ public class LList<T> {
     }
 
     public Promise<Maybe<T>> head() {
-        return unfix.map(listF -> listF.match(() -> Maybe.nothing(), (t, f) -> Maybe.just(t)));
+        return unfix.fmap(listF -> listF.match(() -> Maybe.nothing(), (t, f) -> Maybe.just(t)));
     }
 
     public Promise<Maybe<LList<T>>> tail() {
-        return unfix.map(listF -> listF.match(() -> Maybe.nothing(), (t, f) -> Maybe.just(f)));
+        return unfix.fmap(listF -> listF.match(() -> Maybe.nothing(), (t, f) -> Maybe.just(f)));
     }
 
     public <R> LList<R> map(Function<T, R> func) {
-        return LList.bind(unfix.map(listF -> listF.match(() -> LList.nil(), (t, f) -> LList.cons(func.apply(t), f.map(func)))));
+        return LList.bind(unfix.fmap(listF -> listF.match(() -> LList.nil(), (t, f) -> LList.cons(func.apply(t), f.map(func)))));
         //return LList.bind(foldl(new LList<>(), (t, rs) -> func.apply(t).map(t$ -> new LList<R>(t$, rs))));
     }
 
     public <R> LList<R> flatmap(Function<T, LList<R>> func) {
-        return LList.bind(unfix.map(listF -> listF.match(() -> LList.nil(), (t, f) -> func.apply(t).concat(f.flatmap(func)))));
+        return LList.bind(unfix.fmap(listF -> listF.match(() -> LList.nil(), (t, f) -> func.apply(t).concat(f.flatmap(func)))));
         //return LList.bind(this.map(func).foldl(new LList<>(), (llist, acc) -> Promise.just(llist.concat(acc))));
     }
 
     public LList<T> concat(LList<T> other) {
-        return LList.bind(unfix.map(listF -> listF.match(() -> other, (t, f) -> LList.cons(t, f.concat(other)))));
+        return LList.bind(unfix.fmap(listF -> listF.match(() -> other, (t, f) -> LList.cons(t, f.concat(other)))));
         // var out = unfix.then(listF -> listF.match(() -> other.unfix, (head, tail) -> Promise.just(ListF.cons(head, tail.concat(other)))));
         // return new LList<>(out);
     }
@@ -103,7 +103,7 @@ public class LList<T> {
         return traverse(t -> {
             collection.add(t);
             return Promise.nil();
-        }).map($ -> collection);
+        }).fmap($ -> collection);
     }
 
     public <R> Promise<R> foldr(R r, BiFunction<T, R, Promise<R>> func) {
@@ -116,7 +116,7 @@ public class LList<T> {
     }
 
     public <R> Promise<R> fold(Function<Promise<ListF<T, Promise<R>>>, Promise<R>> func) {
-        return func.apply(unfix.map(listF -> listF.fmap(f -> f.fold(func))));
+        return func.apply(unfix.fmap(listF -> listF.fmap(f -> f.fold(func))));
     }
 
     public static <T> LList<T> bind(Promise<LList<T>> promise) {
@@ -129,11 +129,11 @@ public class LList<T> {
 
     @Deprecated
     public Promise<Boolean> isEmpty() {
-        return unfix.map(listF -> listF.match(() -> true, (t, f) -> false));
+        return unfix.fmap(listF -> listF.match(() -> true, (t, f) -> false));
     }
 
     public Promise<Boolean> empty() {
-        return unfix.map(listF -> listF.match(() -> true, (t, f) -> false));
+        return unfix.fmap(listF -> listF.match(() -> true, (t, f) -> false));
     }
 
     public LList<T> filter(Function<? super T, Promise<Boolean>> func) {
@@ -159,7 +159,7 @@ public class LList<T> {
     }
 
     public <R> Promise<R> match(Supplier<R> nil, BiFunction<T, LList<T>, R> cons) {
-        return unfix.map(listF -> listF.match(() -> nil.get(), (t, f) -> cons.apply(t, f)));
+        return unfix.fmap(listF -> listF.match(() -> nil.get(), (t, f) -> cons.apply(t, f)));
     }
 
     public <R> LListMatch<R> match() {
@@ -170,11 +170,11 @@ public class LList<T> {
         Supplier<R> nil;
         BiFunction<T, LList<T>, R> cons;
         public LListMatch() {
-            set(() -> unfix.map(listF -> listF.match(nil, cons)));
+            set(() -> unfix.fmap(listF -> listF.match(nil, cons)));
         }
 
         public LListMatch<R> nil(Supplier<R> nil) {
-            this.nil = nil; 
+            this.nil = nil;
             return this;
         }
 

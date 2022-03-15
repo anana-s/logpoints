@@ -10,7 +10,7 @@ public class PrintGraph {
     public static void main(String[] args) {
         Namespace ns = Cmd.parse(args);
         Factory.v().configure(ns);
-        Rain<Stmt> graph = Factory.v().graph();
+        Rain<Box<Stmt>.Ref> graph = Factory.v().graph();
 
         // traverse graph
         try (var printer = new DotPrinter(ns.get("output"), StmtVertexFormatter::format)) {

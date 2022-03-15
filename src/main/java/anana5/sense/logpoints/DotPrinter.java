@@ -1,9 +1,7 @@
 package anana5.sense.logpoints;
 
 import java.io.PrintStream;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -30,9 +28,9 @@ public class DotPrinter implements AutoCloseable {
         if (vertex == null) {
             return "root";
         }
-        String id = String.format("nx%08x", vertex.id());
+        String id = String.format("nx%08x", vertex.hashCode());
         if (discovered.contains(vertex)) {
-            return String.format("nx%08x", vertex.id());
+            return String.format("nx%08x", vertex.hashCode());
         }
         discovered.add(vertex);
         out.println("    " + String.format("%s [label=\"%s\"]", id, StringEscapeUtils.escapeJava(formatter.apply(vertex))));

@@ -56,8 +56,8 @@ public class Promise<T> implements Computation<T>, Supplier<T> {
         }
         @Override
         public Continuation accept(Callback<T> k) throws Unresolved {
-            if (resolved()) {
-                return Continuation.apply(k, this.get());
+            if (super.resolved) {
+                return Continuation.apply(k, super.value);
             } else {
                 return Continuation.accept(c, k.effect(this::resolve));
             }
@@ -84,8 +84,8 @@ public class Promise<T> implements Computation<T>, Supplier<T> {
     }
 
     @Override
-    public <R> Promise<R> map(Function<? super T, ? extends R> f) {
-        return Promise.from(Computation.super.map(f));
+    public <R> Promise<R> fmap(Function<? super T, ? extends R> f) {
+        return Promise.from(Computation.super.fmap(f));
     }
     
     @Override
@@ -124,7 +124,7 @@ public class Promise<T> implements Computation<T>, Supplier<T> {
     }
 
     public static <T> Promise<LList<T>> all(LList<Promise<T>> promises) {
-        return promises.foldl(LList.of(), (p, acc) -> p.map(x -> LList.cons(x, acc)));
+        return promises.foldl(LList.of(), (p, acc) -> p.fmap(x -> LList.cons(x, acc)));
         // return promises.fold(p -> p.then(listF -> listF.match(() -> Promise.nil(), (pT, pAcc) -> pT.then(t -> pAcc.then(acc -> Promise.just(LList.cons(t, acc)))))));
     }
 }

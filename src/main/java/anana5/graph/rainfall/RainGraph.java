@@ -2,6 +2,7 @@ package anana5.graph.rainfall;
 
 import java.util.Collection;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 import anana5.graph.Edge;
@@ -24,7 +25,7 @@ public class RainGraph<T> implements Graph<T, Vertex<T>, Edge<T, Vertex<T>>> {
     }
 
     @Override
-    public <R> R fold(R initial, BiConsumer<Collection<? super R>, ? super Vertex<T>> consumer) {
+    public <R> R fold(R initial, BiFunction<Collection<? super R>, ? super Vertex<T>, ? super Vertex<T>> consumer) {
         // TODO Auto-generated method stub
         return null;
     }

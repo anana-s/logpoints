@@ -19,7 +19,7 @@ public class PrintNodes {
             if (!discovered.contains(vertex)) {
                 discovered.add(vertex);
                 var sj = new StringJoiner("\t");
-                sj.add(String.format("nx%08x", vertex.id()));
+                sj.add(String.format("nx%08x", vertex.hashCode()));
                 sj.add(StmtVertexFormatter.format(vertex));
                 sj.add(vertex.value().getTag("SourceMapTag").toString());
                 System.out.println(sj.toString());

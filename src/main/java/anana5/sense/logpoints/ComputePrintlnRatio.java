@@ -19,12 +19,12 @@ public class ComputePrintlnRatio {
         Set<Vertex<Stmt>> seen = new HashSet<>();
         LList<Tuple<Double, Double>> ratios = graph.fold(droplets -> {
             return droplets.flatmap(droplet -> {
-                if (seen.contains(droplet.vertex())) {
+                if (seen.contains(droplet.get())) {
                     return LList.cons(Tuple.of(.0, .0), LList.of());
                 }
-                seen.add(droplet.vertex());
-                return LList.bind(droplet.next().empty().map(isEmpty -> {
-                    if (droplet.vertex().value().getInvokeExpr().getMethodRef().getName().equals("println")) {
+                seen.add(droplet.get());
+                return LList.bind(droplet.next().empty().fmap(isEmpty -> {
+                    if (droplet.get().value().getInvokeExpr().getMethodRef().getName().equals("println")) {
                         if (isEmpty) {
                             return LList.cons(Tuple.of(1., 1.), LList.of());
                         } else {
@@ -43,7 +43,7 @@ public class ComputePrintlnRatio {
 
         Double average = ratios.foldr(Tuple.of(.0, .0), (cur, acc) -> {
             return Promise.just(Tuple.of((cur.fst() / cur.snd()) + acc.fst(), acc.snd() + 1));
-        }).map(tuple -> {
+        }).fmap(tuple -> {
             return tuple.fst() / tuple.snd();
         }).join();
 

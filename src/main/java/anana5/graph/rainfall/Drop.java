@@ -7,34 +7,25 @@ import anana5.graph.Vertex;
 
 public class Drop<T, F> {
 
-    final private Vertex<T> box;
+    final private T v;
     final private F f;
 
-    protected Drop(Vertex<T> box, F next) {
-        this.box = box;
+    protected Drop(T value, F next) {
+        this.v = value;
         this.f = next;
     }
 
     protected Drop(Drop<T, F> droplet) {
-        this.box = droplet.box;
+        this.v = droplet.v;
         this.f = droplet.f;
     }
 
-    public static <T, F> Drop<T, F> of(Vertex<T> box, F next) {
-        return new Drop<>(box, next);
+    public static <T, F> Drop<T, F> of(T value, F next) {
+        return new Drop<>(value, next);
     }
 
-    @Deprecated
-    public Vertex<T> get() {
-        return this.vertex();
-    }
-
-    public Vertex<T> vertex() {
-        return this.box;
-    }
-
-    public T value() {
-        return this.vertex().value();
+    public T get() {
+        return this.v;
     }
 
     public F next() {
@@ -42,10 +33,10 @@ public class Drop<T, F> {
     }
 
     public <G> Drop<T, G> fmap(Function<? super F, ? extends G> func) {
-        return new Drop<>(box, func.apply(f));
+        return new Drop<>(v, func.apply(f));
     }
 
-    public <G> Drop<T, G> fmap(BiFunction<? super Vertex<T>, ? super F, ? extends G> func) {
-        return new Drop<>(box, func.apply(box, f));
+    public <G> Drop<T, G> fmap(BiFunction<? super T, ? super F, ? extends G> func) {
+        return new Drop<>(v, func.apply(v, f));
     }
 }
