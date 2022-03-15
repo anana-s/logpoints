@@ -12,8 +12,8 @@ import soot.jimple.Stmt;
 public class ComputePrintlnRatio {
 
     public static void main(String[] args) {
-        Factory.v().configure(args);
-        var graph = Factory.v().graph();
+        LogPoints.v().configure(args);
+        var graph = LogPoints.v().graph();
 
         // stats
         Set<Vertex<Stmt>> seen = new HashSet<>();

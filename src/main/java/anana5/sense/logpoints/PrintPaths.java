@@ -11,11 +11,11 @@ import soot.jimple.Stmt;
 
 public class PrintPaths {
     public static void main(String[] args) {
-        Factory.v().configure(args);
+        LogPoints.v().configure(args);
 
-        var graph = Factory.v().graph();
+        var graph = LogPoints.v().graph();
 
-        graph.traverse(($, $$) -> Promise.nil()).join();
+        graph.traverse(($, $$) -> Promise.lazy()).join();
 
         var seen = new HashMap<Vertex<Stmt>, LList<Path<Vertex<Stmt>>>>();
         LList<Path<Vertex<Stmt>>> paths = graph.fold(droplets -> droplets.flatmap(droplet -> {
@@ -41,7 +41,7 @@ public class PrintPaths {
 
         paths.traverse(path -> {
             if (path.empty()) {
-                return Promise.nil();
+                return Promise.lazy();
             }
 
             var sj = new StringJoiner("\t");
@@ -49,8 +49,8 @@ public class PrintPaths {
                 sj.add(String.format("nx%08x %s", vertex.hashCode(), StmtVertexFormatter.format(vertex)));
             });
             System.out.println(sj.toString());
-            return Promise.nil();
+            return Promise.lazy();
         }).join();
     }
-    
+
 }

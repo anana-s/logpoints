@@ -11,8 +11,8 @@ import soot.jimple.Stmt;
 public class PrintNodes {
 
     public static void main(String[] args) {
-        Factory.v().configure(args);
-        var graph = Factory.v().graph();
+        LogPoints.v().configure(args);
+        var graph = LogPoints.v().graph();
 
         Set<Vertex<Stmt>> discovered = new HashSet<>();
         var task = graph.traverse(($, vertex) -> {
@@ -24,10 +24,10 @@ public class PrintNodes {
                 sj.add(vertex.value().getTag("SourceMapTag").toString());
                 System.out.println(sj.toString());
             }
-            return Promise.nil();
+            return Promise.lazy();
         });
 
         task.join();
     }
-    
+
 }

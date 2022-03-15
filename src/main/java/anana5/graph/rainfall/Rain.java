@@ -1,17 +1,12 @@
 package anana5.graph.rainfall;
 
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
-import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
-import anana5.graph.Vertex;
 import anana5.util.LList;
 import anana5.util.Promise;
 
@@ -107,14 +102,14 @@ public class Rain<T> {
         return unfix.traverse(droplet -> {
             var target = droplet.get();
             if (visited.contains(target)) {
-                return Promise.nil();
+                return Promise.lazy();
             }
             visited.add(target);
             return visitor.apply(target).then($ -> droplet.next().traverse(visitor, visited));
         });
     }
 
-    
+
     /**
      * @param rain
      * @return Rain<T>
@@ -146,14 +141,14 @@ public class Rain<T> {
         return unfix.empty();
     }
 
-    public Rain<T> filter(Predicate<? super T> predicate) {
-        var droplets = unfix().filter(droplet -> Promise.just(predicate.test(droplet.get())));
+    public Rain<T> filter(Function<? super T, ? extends Promise<? extends Boolean>> predicate) {
+        var droplets = unfix().filter(droplet -> predicate.apply(droplet.get()));
         droplets = droplets.map(droplet -> droplet.fmap(let -> let.filter(predicate)));
         return new Rain<>(droplets);
     }
 
     public Rain<T> resolve() {
-        Promise<Void> promise = traverse(t -> Promise.nil());
+        Promise<Void> promise = traverse(t -> Promise.lazy());
         return Rain.bind(promise.fmap($ -> this));
     }
 }

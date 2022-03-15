@@ -4,7 +4,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public class Promise<T> implements Computation<T>, Supplier<T> {
+public class Promise<T> implements Computation<T> {
     private boolean resolved;
     private T value;
 
@@ -15,11 +15,11 @@ public class Promise<T> implements Computation<T>, Supplier<T> {
         }
     }
 
-    public Promise() {
+    private Promise() {
         this.resolved = false;
     }
 
-    public Promise(Consumer<Consumer<T>> promise) {
+    private Promise(Consumer<Consumer<T>> promise) {
         this();
         promise.accept(this::resolve);
     }
@@ -31,17 +31,27 @@ public class Promise<T> implements Computation<T>, Supplier<T> {
         }
     }
 
-    public static <T> Promise<T> just(T t) {
-        return new Promise<>(resolve -> {
-            resolve.accept(t);
-        });
+    public static <T> Promise<T> of(Consumer<Consumer<T>> promise) {
+        return new Promise<>(promise);
     }
 
-    public static <T> Promise<T> just(Supplier<T> supplier) {
+    public static <T> Promise<T> just(T t) {
+        return Promise.of(resolve -> resolve.accept(t));
+    }
+
+    public static <T> Promise<T> nil() {
+        return Promise.of(resolve -> resolve.accept(null));
+    }
+
+    public static <T> Promise<T> lazy() {
+        return Promise.from(Computation.nil());
+    }
+
+    public static <T> Promise<T> lazy(Supplier<T> supplier) {
         return Promise.from(Computation.just(supplier));
     }
 
-    public static Promise<Void> just(Runnable runnable) {
+    public static Promise<Void> lazy(Runnable runnable) {
         return Promise.from(Computation.just(runnable));
     }
 
@@ -80,51 +90,46 @@ public class Promise<T> implements Computation<T>, Supplier<T> {
 
     @Override
     public Promise<T> effect(Consumer<T> consumer) {
+        if (resolved) {
+            consumer.accept(value);
+            return Promise.just(null);
+        }
         return Promise.from(Computation.super.effect(consumer));
     }
 
     @Override
     public <R> Promise<R> fmap(Function<? super T, ? extends R> f) {
+        if (resolved) {
+            return Promise.just(f.apply(value));
+        }
         return Promise.from(Computation.super.fmap(f));
     }
-    
+
     @Override
     public <R> Promise<R> apply(Computation<? extends Function<? super T, ? extends R>> f) {
         return Promise.from(Computation.super.apply(f));
     }
-    
+
     @Override
     public <S> Promise<S> bind(Function<? super T, ? extends Computation<S>> f) {
         return then(f);
     }
-    
+
     public <S> Promise<S> then(Function<? super T, ? extends Computation<S>> f) {
         return Promise.from(Computation.super.bind(f));
     }
-    
-    public static <T> Promise<T> nil() {
-        return Promise.from(Computation.nil());
-    }
-    
+
     public boolean resolved() {
         return this.resolved;
     }
-    
+
     public T join() {
         Computation.super.run(this::resolve);
         return value;
     }
-    
-    @Override
-    public T get() throws Unresolved {
-        if (!resolved) {
-            throw new Unresolved(this);
-        };
-        return value;
-    }
 
     public static <T> Promise<LList<T>> all(LList<Promise<T>> promises) {
-        return promises.foldl(LList.of(), (p, acc) -> p.fmap(x -> LList.cons(x, acc)));
+        return promises.foldl(LList.of(), (p, acc) -> p.fmap(t -> LList.cons(t, acc)));
         // return promises.fold(p -> p.then(listF -> listF.match(() -> Promise.nil(), (pT, pAcc) -> pT.then(t -> pAcc.then(acc -> Promise.just(LList.cons(t, acc)))))));
     }
 }

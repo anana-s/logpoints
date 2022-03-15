@@ -31,7 +31,7 @@ class LListTest {
     void collect() {
         a.collect().bind(actual -> {
             assertEquals(Arrays.asList(1, 2, 3), actual);
-            return Promise.<Void>nil();
+            return Promise.<Void>lazy();
         }).join();
     }
 
@@ -39,7 +39,7 @@ class LListTest {
     void merge() {
         LList.merge(a, b).collect().then(r$ -> {
             assertEquals(Arrays.asList(1, 2, 3, 4, 5, 6), r$);
-            return Promise.<Void>nil();
+            return Promise.<Void>lazy();
         }).join();
     }
 
@@ -56,7 +56,7 @@ class LListTest {
         var out = a.filter(value -> Promise.just(value != 2));
         out.collect().bind(actual -> {
             assertEquals(Arrays.asList(1,3), actual);
-            return Promise.nil();
+            return Promise.lazy();
         }).join();
     }
 
@@ -65,13 +65,27 @@ class LListTest {
         List<Integer> actual = new ArrayList<>();
         a.traverse(value -> {
             actual.add(value);
-            return Promise.nil();
+            return Promise.lazy();
         }).join();
         assertEquals(Arrays.asList(1,2,3), actual);
         a.traverse((a, b) -> b.then($ -> a), value -> {
             actual.add(value);
-            return Promise.nil();
+            return Promise.lazy();
         }).join();
         assertEquals(Arrays.asList(1,2,3,3,2,1), actual);
+    }
+
+    @Test
+    void bind() {
+        List<Integer> actual = new ArrayList<>();
+        LList.unfold(3, i -> {
+            if (i == 0) {
+                return Promise.just(ListF.nil());
+            }
+            actual.add(i);
+            return Promise.just(ListF.cons(i, i - 1));
+        }).traverse(i -> Promise.lazy()).join();
+
+        assertEquals(Arrays.asList(3, 2, 1), actual);
     }
 }

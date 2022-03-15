@@ -11,7 +11,7 @@ public class PromiseTest {
     @Test
     void order() {
         var actual = new ArrayList<>();
-        Promise.just(() -> {
+        Promise.lazy(() -> {
             actual.add(0);
             return 0;
         }).effect(i -> {

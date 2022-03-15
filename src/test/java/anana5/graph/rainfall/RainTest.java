@@ -37,7 +37,7 @@ public class RainTest {
         var actual = new ArrayList<>();
         graph.get().traverse(v -> {
             actual.add(v);
-            return Promise.nil();
+            return Promise.lazy();
         }).join();
         assertEquals(Arrays.asList(1, 2, 4, 5, 3), actual);
     }
@@ -51,7 +51,7 @@ public class RainTest {
 
         copy.traverse(v -> {
             actual.add(v);
-            return Promise.nil();
+            return Promise.lazy();
         }).join();
 
         assertEquals(Arrays.asList(2, 3, 5, 6, 4), actual);
@@ -77,14 +77,14 @@ public class RainTest {
         });
 
         rain = rain.filter(i -> {
-            return i < 3;
+            return Promise.just(i < 3);
         });
 
         List<Integer> actual = new ArrayList<>();
 
         rain.traverse((v) -> {
             actual.add(v);
-            return Promise.nil();
+            return Promise.lazy();
         }).join();
         assertEquals(Arrays.asList(0, 1, 2), actual);
     }
@@ -107,7 +107,7 @@ public class RainTest {
         var actual = new ArrayList<>();
         graph.get().resolve().traverse(v -> {
             actual.add(v);
-            return Promise.nil();
+            return Promise.lazy();
         }).join();
         assertEquals(Arrays.asList(1, 2, 4, 5, 3), actual);
     }

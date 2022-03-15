@@ -39,7 +39,7 @@ public class LList<T> {
     }
 
     public static <T> LList<T> from(Iterator<T> iter) {
-        return LList.fix(Promise.just(() -> {
+        return LList.fix(Promise.lazy(() -> {
             if (iter.hasNext()) {
                 return ListF.cons(iter.next(), LList.from(iter));
             } else {
@@ -90,11 +90,11 @@ public class LList<T> {
     }
 
     public Promise<Void> traverse(Function<T, Promise<Void>> consumer) {
-        return unfix.then(listF -> listF.match(() -> Promise.nil(), (t, next) -> consumer.apply(t).then($ -> next.traverse(consumer))));
+        return unfix.then(listF -> listF.match(() -> Promise.lazy(), (t, next) -> consumer.apply(t).then($ -> next.traverse(consumer))));
     }
 
     public Promise<Void> traverse(BiFunction<Promise<Void>, Promise<Void>, Promise<Void>> folder, Function<T, Promise<Void>> consumer) {
-        return fold(p -> p.then(listF -> listF.match(() -> Promise.nil(), (t, f) -> folder.apply(Promise.nil().then($ -> consumer.apply(t)), f))));
+        return fold(p -> p.then(listF -> listF.match(() -> Promise.lazy(), (t, f) -> folder.apply(Promise.lazy().then($ -> consumer.apply(t)), f))));
     }
 
     public Promise<Collection<T>> collect() {
@@ -102,7 +102,7 @@ public class LList<T> {
 
         return traverse(t -> {
             collection.add(t);
-            return Promise.nil();
+            return Promise.lazy();
         }).fmap($ -> collection);
     }
 
@@ -136,7 +136,7 @@ public class LList<T> {
         return unfix.fmap(listF -> listF.match(() -> true, (t, f) -> false));
     }
 
-    public LList<T> filter(Function<? super T, Promise<Boolean>> func) {
+    public LList<T> filter(Function<? super T, ? extends Promise<? extends Boolean>> func) {
         var out = this.<LList<T>>foldl(LList.of(), (head, tail) -> {
             return func.apply(head).then(b -> {
                 if (b) {
@@ -150,12 +150,8 @@ public class LList<T> {
         return LList.bind(out);
     }
 
-    public boolean resolved() {
-        return unfix.resolved() && unfix.get().match(() -> true, (t, f) -> f.resolved());
-    }
-
-    public Promise<LList<T>> join() {
-        return unfix.then(listF -> listF.match(() -> Promise.just(this), (t, f) -> f.join()));
+    public LList<T> resolve() {
+        return LList.bind(traverse(i -> Promise.lazy()).fmap($ -> this));
     }
 
     public <R> Promise<R> match(Supplier<R> nil, BiFunction<T, LList<T>, R> cons) {

@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -42,14 +43,14 @@ import soot.jimple.toolkits.callgraph.CallGraph;
 import soot.options.Options;
 import soot.toolkits.graph.ExceptionalUnitGraph;
 
-public class Factory {
+public class LogPoints {
 
-    private static Logger logger = LoggerFactory.getLogger(Factory.class);
-    private static Factory instance = null;
+    private static Logger logger = LoggerFactory.getLogger(LogPoints.class);
+    private static LogPoints instance = null;
     private static Transform cpf = PackManager.v().getPack("jop").get("jop.cpf");
-    public static Factory v() {
+    public static LogPoints v() {
         if (instance == null) {
-            instance = new Factory();
+            instance = new LogPoints();
         }
         return instance;
     }
@@ -59,11 +60,11 @@ public class Factory {
 
     private CallGraph cg;
 
-    public Factory configure(String[] args) {
+    public LogPoints configure(String[] args) {
         return configure(Cmd.parse(args));
     }
 
-    public Factory configure(Namespace ns) {
+    public LogPoints configure(Namespace ns) {
         this.prepend(ns.getBoolean("prepend"));
         this.classpath(ns.getString("classpath"));
         this.modulepath(ns.getString("modulepath"));
@@ -77,7 +78,7 @@ public class Factory {
         return this;
     }
 
-    public Factory configure() {
+    public LogPoints configure() {
         try {
             Options.v().set_output_dir(Files.createTempDirectory("soot").toString());
         } catch (IOException e) {
@@ -139,59 +140,59 @@ public class Factory {
         return this;
     }
 
-    public Factory prepend(boolean should) {
+    public LogPoints prepend(boolean should) {
         Options.v().set_prepend_classpath(should);
         return this;
     }
 
-    public Factory classpath(String classpath) {
+    public LogPoints classpath(String classpath) {
         Options.v().set_soot_classpath(classpath);
         return this;
     }
 
-    public Factory modulepath(String modulepath) {
+    public LogPoints modulepath(String modulepath) {
         Options.v().set_soot_modulepath(modulepath);
         return this;
     }
 
-    public Factory classes(List<String> classes) {
+    public LogPoints classes(List<String> classes) {
         Options.v().classes().clear();
         Options.v().classes().addAll(classes);
         return this;
     }
 
-    public Factory include(List<String> inclusions) {
+    public LogPoints include(List<String> inclusions) {
         Options.v().set_include(inclusions);
         return this;
     }
 
-    public Factory exclude(List<String> exclusions) {
+    public LogPoints exclude(List<String> exclusions) {
         Options.v().set_exclude(exclusions);
         return this;
     }
 
-    private Factory() {
+    private LogPoints() {
         // make sure to configure soot
         this.configure();
     }
 
-    public Factory(CallGraph cg) {
+    public LogPoints(CallGraph cg) {
         this.cg = cg;
     }
 
-    public Factory tag(Pattern pattern) {
+    public LogPoints tag(Pattern pattern) {
         tags.add(pattern);
         return this;
     }
 
-    public Factory tag(int flags, String... patterns) {
+    public LogPoints tag(int flags, String... patterns) {
         for (String pattern : patterns) {
             tag(Pattern.compile(pattern, flags));
         }
         return this;
     }
 
-    public Factory tag(String... patterns) {
+    public LogPoints tag(String... patterns) {
         for (String pattern : patterns) {
             tag(Pattern.compile(pattern));
         }
@@ -218,7 +219,7 @@ public class Factory {
         }
 
         return build(LList.from(Scene.v().getEntryPoints()), new Path<>()).fmap(rain -> {
-            return rain.fold(drops -> Rain.fix(drops.filter(drop -> Promise.just(!drop.get().sentinel()))));
+            return rain.filter(v -> Promise.just(!v.sentinel()));
         });
     }
 
@@ -229,14 +230,8 @@ public class Factory {
 
         Rain<Box<Stmt>.Ref> cr;
         Rain<Box<Stmt>.Ref> mr;
-
-        if (logger.isTraceEnabled()) {
-            cr = Rain.merge(LList.bind(cs.map(method -> build(method, path)))).resolve();
-            mr = Rain.merge(LList.bind(ms.map(method -> build(method, path)))).resolve();
-        } else {
             cr = Rain.merge(LList.bind(cs.map(method -> build(method, path))));
             mr = Rain.merge(LList.bind(ms.map(method -> build(method, path))));
-        }
 
         return cr.empty().fmap(e -> {
             if (e) {
@@ -255,63 +250,66 @@ public class Factory {
     private final Box<Stmt> box = new Box<>();
 
     private Promise<Rain<Box<Stmt>.Ref>> build(SootMethod method, Path<Tuple<SootMethod, Boolean>> path) {
-        var knot = knot(method, path); // fst is recursive, snd is knot
-        if (knot.fst()) {
-            if (knot.snd()) {
-                // break empty cycle
-                logger.trace("{} is closing an empty loop", format(path, method));
-                return Promise.just(Rain.of());
-            } else {
-                logger.trace("{} loaded from cache", format(path, method));
-                return Promise.just(memo.get(method));
+            if (memo.containsKey(method)) {
+                // map to new boxes
+                return Promise.lazy(() -> {
+                    logger.trace("{} loaded from cache", format(path, method));
+                    return memo.get(method);
+                });
             }
-        }
 
-        if (memo.containsKey(method)) {
-            // map to new boxes
-            logger.trace("{} loaded from cache in new context", format(path, method));
-            Box<Stmt> box = new Box<>();
-            return Promise.just(memo.get(method).map(v -> box.copy(v)));
-        }
 
-        if (method.isPhantom()){
-            logger.trace("{} skipped due to being phantom", format(path, method));
-            return Promise.just(Rain.of(Drop.of(box.sentinel(), Rain.of())));
-        }
-
-        if (!method.isConcrete()) {
-            logger.trace("{} skipped due to not being concrete", format(path, method));
-            return Promise.just(Rain.of(Drop.of(box.sentinel(), Rain.of())));
-        }
-
-        if (method.getDeclaringClass().isLibraryClass()) {
-            logger.trace("{} skipped due to being library method", format(path, method));
-            return Promise.just(Rain.of(Drop.of(box.sentinel(), Rain.of())));
-        }
-
-        var builder = new CFGFactory(method);
-        logger.trace("{} loading", format(path, method));
-        var rain = builder.build(path);
-        return rain.empty().fmap(e -> {
-            if (!e) {
-                memo.put(method, rain);
+            if (memo.containsKey(method)) {
+                // map to new boxes
+                return Promise.lazy(() -> {
+                    logger.trace("{} loaded from cache", format(path, method));
+                    return memo.get(method);
+                });
             }
-            return rain;
-        });
+
+            if (method.isPhantom()){
+                return Promise.lazy(() -> {
+                    logger.trace("{} skipped due to being phantom", format(path, method));
+                    return Rain.of(Drop.of(box.sentinel(), Rain.of()));
+                });
+            }
+
+            if (!method.isConcrete()) {
+                return Promise.lazy(() -> {
+                    logger.trace("{} skipped due to not being concrete", format(path, method));
+                    return Rain.of(Drop.of(box.sentinel(), Rain.of()));
+                });
+            }
+
+            if (method.getDeclaringClass().isLibraryClass()) {
+                return Promise.lazy(() -> {
+                    logger.trace("{} skipped due to being library method", format(path, method));
+                    return Rain.of(Drop.of(box.sentinel(), Rain.of()));
+                });
+            }
+
+            return Promise.lazy((() -> {
+                logger.trace("{} loading", format(path, method));
+                return new CFGFactory(method);
+            })).then(builder -> {
+                return builder.build(path).effect((rain) -> {
+                    memo.put(method, rain);
+                });
+            });
     }
 
     class CFGFactory {
         String sourceName;
         SootMethod method;
-        Map<Stmt, Rain<Box<Stmt>.Ref>> memo;
+        Map<Stmt, Promise<Rain<Box<Stmt>.Ref>>> memo0;
         ExceptionalUnitGraph cfg;
         Box<Stmt> box;
         CFGFactory(SootMethod method) {
             var body = method.retrieveActiveBody();
             if (body instanceof JimpleBody) {
                 this.method = method;
-                this.memo = new HashMap<>();
-                Factory.cpf.apply(body);
+                this.memo0 = new HashMap<>();
+                LogPoints.cpf.apply(body);
                 this.cfg = new ExceptionalUnitGraph(body);
                 this.sourceName = method.getDeclaringClass().getName() + "." + method.getName();
                 this.box = new Box<>();
@@ -320,35 +318,29 @@ public class Factory {
             }
         }
 
-        public Rain<Box<Stmt>.Ref> build(Path<Tuple<SootMethod, Boolean>> path) {
+        public Promise<Rain<Box<Stmt>.Ref>> build(Path<Tuple<SootMethod, Boolean>> path) {
             return build(LList.from(cfg.getHeads()).map(unit -> (Stmt)unit), path, new Path<>(), false);
         }
 
-        private Rain<Box<Stmt>.Ref> build(LList<Stmt> stmts, Path<Tuple<SootMethod, Boolean>> path, Path<Tuple<Stmt, Boolean>> subpath, boolean guard) {
-            return Rain.merge(stmts.map(stmt -> build(stmt, path, subpath, guard)));
+        private Promise<Rain<Box<Stmt>.Ref>> build(LList<Stmt> stmts, Path<Tuple<SootMethod, Boolean>> path, Path<Tuple<Stmt, Boolean>> subpath, boolean guard) {
+            return stmts.map(stmt -> build(stmt, path, subpath, guard).fmap(this::process)).foldr(Rain.of(), (p, acc) -> p.fmap(rain -> Rain.merge(rain, acc)));
         }
 
-        private Rain<Box<Stmt>.Ref> build(Stmt stmt, Path<Tuple<SootMethod, Boolean>> path, Path<Tuple<Stmt, Boolean>> subpath, boolean guard) {
-            // if we have already seen this stmt
-            if (memo.containsKey(stmt)) {
-                logger.trace("{} loading from cache", format(path, method, stmt));
-                return memo.get(stmt);
-            }
-
-            // if there is an empty cycle
-            var knot = knot(stmt, subpath);
-            if (knot.fst() && knot.snd()) {
-                logger.trace("{} is closing an empty loop", format(path, method, stmt));
-                return Rain.of();
+        private Promise<Rain<Box<Stmt>.Ref>> build(Stmt stmt, Path<Tuple<SootMethod, Boolean>> path, Path<Tuple<Stmt, Boolean>> subpath, boolean guard) {
+            // if there is no cycle, we can load from cache
+            boolean knot = knot(stmt, subpath);
+            if (!knot && memo0.containsKey(stmt)) {
+                logger.trace("{} loaded from cache", format(path, method, stmt));
+                return memo0.get(stmt);
             }
 
             // if stmt is a return statement
             if (stmt instanceof ReturnStmt || stmt instanceof ReturnVoidStmt) {
                 logger.trace("{} returning", format(path, method, stmt));
+                var promise = Promise.just(Rain.of(Drop.of(box.sentinel(stmt), Rain.of())));
+                memo0.put(stmt, promise);
+                return promise;
                 // stop building
-                var rain =  Rain.of(Drop.of(box.sentinel(stmt), Rain.of()));
-                memo.put(stmt, rain);
-                return rain;
             }
 
             //TODO handle exceptional dests;
@@ -359,11 +351,15 @@ public class Factory {
 
             if (!stmt.containsInvokeExpr()) {
                 // skip this statement
+                if (knot) {
+                    logger.trace("{} undid knot", format(path, method, stmt), code);
+                    return Promise.just(Rain.of());
+                }
                 logger.trace("{} skipped with successors {}", format(path, method, stmt), code);
-                var rain = process(build(next, path, subpath.push(Tuple.of(stmt, false)), guard));
-                return Rain.bind(rain.empty().fmap(e -> {
+                var promise = build(next, path, subpath.push(Tuple.of(stmt, false)), guard);
+                return promise.then(rain -> rain.empty().fmap(e -> {
                     if (!e) {
-                        memo.put(stmt, rain);
+                        memo0.put(stmt, promise);
                     }
                     return rain;
                 }));
@@ -375,19 +371,32 @@ public class Factory {
             String methodName = declaringClass.getName() + "." + methodRef.getName();
 
             // check if stmt needs to be kept
-            for (Pattern pattern : Factory.this.tags) {
+            for (Pattern pattern : LogPoints.this.tags) {
                 if (pattern.matcher(methodName).find()) {
-                    logger.trace("{} matched with tag {}, continuing with successors {}", format(path, method, stmt), pattern.toString(), code);
-
-                    // tag the stmt with source information
-                    stmt.addTag(new SourceMapTag(this.sourceName, stmt.getJavaSourceStartLineNumber(), stmt.getJavaSourceStartColumnNumber()));
-
-                    // keep this stmt and build drop
-                    var succs = process(build(next, path, subpath.push(Tuple.of(stmt, true)), true));
-                    var rain = Rain.of(Drop.of(box.of(stmt), succs));
-                    memo.put(stmt, rain);
-                    return rain;
+                    if (knot) {
+                        // break knot
+                        logger.trace("{} undid knot", format(path, method, stmt), code);
+                        return Promise.just(Rain.of(Drop.of(box.of(stmt), Rain.of())));
+                    } else {
+                        logger.trace("{} matched with tag {}, continuing with successors {}", format(path, method, stmt), pattern.toString(), code);
+                        stmt.addTag(new SourceMapTag(this.sourceName, stmt.getJavaSourceStartLineNumber(), stmt.getJavaSourceStartColumnNumber()));
+                        var succs = build(next, path, subpath.push(Tuple.of(stmt, true)), true);
+                        var promise = succs.fmap(s -> Rain.of(Drop.of(box.of(stmt), s)));
+                        memo0.put(stmt, promise);
+                        return promise;
+                    }
                 }
+            }
+
+            // get rain of called methods
+            final LList<SootMethod> methods = LList.from(cg.edgesOutOf(stmt)).map(edge -> edge.tgt());
+
+            if (knot) {
+                // break knot
+                return LogPoints.this.build(methods, path.push(Tuple.of(method, guard))).fmap(subrain -> {
+                    logger.trace("{} undid knot", format(path, method, stmt), code);
+                    return subrain.filter(v -> Promise.just(!v.sentinel())).map(v -> box.copy(v));
+                });
             }
 
             // stmt is not kept, so expand the invokation
@@ -396,46 +405,36 @@ public class Factory {
             } else {
                 logger.trace("{} expanding [unguarded] with successors {}", format(path, method, stmt), code);
             }
-
-            // get rain of called methods
-            final var methods = LList.from(cg.edgesOutOf(stmt)).map(edge -> edge.tgt());
-
-            return Rain.bind(methods.empty().then(noMethods -> {
+            var promise = methods.empty().<Rain<Box<Stmt>.Ref>>then(noMethods -> {
                 if (noMethods) {
                     logger.trace("{} expands to nothing", format(path, method, stmt));
-                    var rain = process(build(next, path, subpath.push(Tuple.of(stmt, false)), guard));
-                    return rain.empty().fmap(e -> {
-                        if (!e) {
-                            memo.put(stmt, rain);
-                        }
-                        return rain;
-                    });
+                    return build(next, path, subpath.push(Tuple.of(stmt, false)), guard);
                 }
-
-                Rain<Box<Stmt>.Ref> subrain = Rain.bind(Factory.this.build(methods, path.push(Tuple.of(method, guard))));
-                var unguarded = Rain.bind(Promise.just(() -> process(build(next, path, subpath.push(Tuple.of(stmt, false)), guard))));
-                var guarded = Rain.bind(Promise.just(() -> process(build(next, path, subpath.push(Tuple.of(stmt, true)), true))));
-                var rain = Rain.merge(subrain.unfix().map(drop -> {
-                    if (drop.get().sentinel()) {
-                        logger.trace("{} returned [unguarded] to {}", format(path, method, stmt), code);
-                        return unguarded;
-                    }
-
-                    return drop.next().fold(drops$ -> Rain.merge(drops$.map(drop$ -> {
-                        if (drop$.get().sentinel()) {
-                            logger.trace("{} returned [guarded] to {}", format(path, method, stmt), code);
-                            return guarded;
+                return LogPoints.this.build(methods, path.push(Tuple.of(method, guard))).fmap(subrain -> {
+                    subrain = subrain.map(v -> box.copy(v));
+                    Rain<Box<Stmt>.Ref> unguarded = Rain.bind(build(next, path, subpath.push(Tuple.of(stmt, false)), guard));
+                    Rain<Box<Stmt>.Ref> guarded = Rain.bind(build(next, path, subpath.push(Tuple.of(stmt, true)), true));
+                    return Rain.merge(subrain.unfix().map(drop -> {
+                        if (drop.get().sentinel()) {
+                            logger.trace("{} returned [unguarded] to {}", format(path, method, stmt), code);
+                            return unguarded;
                         }
-                        return Rain.of(drop);
-                    })));
-                }));
-                rain.empty().fmap(e -> {
-                    if (!e) {
-                        memo.put(stmt, rain);
-                    }
-                    return rain;
+
+                        return drop.next().fold(drops$ -> Rain.merge(drops$.map(drop$ -> {
+                            if (drop$.get().sentinel()) {
+                                logger.trace("{} returned [guarded] to {}", format(path, method, stmt), code);
+                                return guarded;
+                            }
+                            return Rain.of(drop);
+                        })));
+                    }));
                 });
-                return Promise.just(rain);
+            });
+            return promise.then(rain -> rain.empty().fmap(e -> {
+                if (!e) {
+                    memo0.put(stmt, promise);
+                }
+                return rain;
             }));
         }
 
@@ -462,19 +461,19 @@ public class Factory {
         return format(path, method) + " [" + stmt.toString() + "]@[" + stmt.hashCode() + "]";
     }
 
-    <T> Tuple<Boolean, Boolean> knot(T t, Path<Tuple<T, Boolean>> path) {
-        return knot(t, path, false);
-    }
-    <T> Tuple<Boolean, Boolean> knot(T t, Path<Tuple<T, Boolean>> path, boolean guard) {
+    <T> boolean knot(T t, Path<Tuple<T, Boolean>> path) {
         if (path.empty()) {
-            return Tuple.of(false, !guard);
+            return false;
         }
 
         var tuple = path.head().get();
+
         if (t.equals(tuple.fst())) {
-            return Tuple.of(true, !(guard || tuple.snd()));
+            return true;
+        } else if (tuple.snd()) {
+            return false;
         } else {
-            return knot(t, path.tail().get(), guard || tuple.snd());
+            return knot(t, path.tail().get());
         }
     }
 }

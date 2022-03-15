@@ -9,14 +9,14 @@ public class PrintGraph {
 
     public static void main(String[] args) {
         Namespace ns = Cmd.parse(args);
-        Factory.v().configure(ns);
-        Rain<Box<Stmt>.Ref> graph = Factory.v().graph();
+        LogPoints.v().configure(ns);
+        Rain<Box<Stmt>.Ref> graph = LogPoints.v().graph();
 
         // traverse graph
         try (var printer = new DotPrinter(ns.get("output"), StmtVertexFormatter::format)) {
             graph.traverse((src, tgt) -> {
                 printer.print(src, tgt);
-                return Promise.nil();
+                return Promise.lazy();
             }).join();
         }
     }
