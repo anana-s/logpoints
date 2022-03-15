@@ -56,7 +56,7 @@ public class LogPoints {
     }
 
     private List<Pattern> tags = new ArrayList<>();
-    private Map<SootMethod, Rain<Box<Stmt>.Ref>> memo = new HashMap<>();
+    private Map<SootMethod, Promise<Rain<Box<Stmt>.Ref>>> memo = new HashMap<>();
 
     private CallGraph cg;
 
@@ -228,22 +228,21 @@ public class LogPoints {
         var cs = methods.filter(method -> Promise.just(method.getName().equals("<clinit>")));
         var ms = methods.filter(method -> Promise.just(!method.getName().equals("<clinit>")));
 
-        Rain<Box<Stmt>.Ref> cr;
-        Rain<Box<Stmt>.Ref> mr;
-            cr = Rain.merge(LList.bind(cs.map(method -> build(method, path))));
-            mr = Rain.merge(LList.bind(ms.map(method -> build(method, path))));
+        return cs.map(method -> build(method, path)).foldr(Rain.<Box<Stmt>.Ref>of(), (p, acc) -> p.fmap(rain -> Rain.merge(rain, acc))).then(cr -> {
+            return ms.map(method -> build(method, path)).foldr(Rain.<Box<Stmt>.Ref>of(), (p, acc) -> p.fmap(rain -> Rain.merge(rain, acc))).then(mr -> {
+                return cr.empty().fmap(e -> {
+                    if (e) {
+                        return mr;
+                    }
 
-        return cr.empty().fmap(e -> {
-            if (e) {
-                return mr;
-            }
-
-            return cr.fold(drops -> Rain.merge(drops.map(drop -> {
-                if (drop.get().sentinel()) {
-                    return mr;
-                }
-                return Rain.of(drop);
-            })));
+                    return cr.fold(drops -> Rain.merge(drops.map(drop -> {
+                        if (drop.get().sentinel()) {
+                            return mr;
+                        }
+                        return Rain.of(drop);
+                    })));
+                });
+            });
         });
     }
 
@@ -252,50 +251,37 @@ public class LogPoints {
     private Promise<Rain<Box<Stmt>.Ref>> build(SootMethod method, Path<Tuple<SootMethod, Boolean>> path) {
             if (memo.containsKey(method)) {
                 // map to new boxes
-                return Promise.lazy(() -> {
-                    logger.trace("{} loaded from cache", format(path, method));
-                    return memo.get(method);
-                });
+                logger.trace("{} loaded from cache", format(path, method));
+                return memo.get(method);
             }
 
 
             if (memo.containsKey(method)) {
                 // map to new boxes
-                return Promise.lazy(() -> {
-                    logger.trace("{} loaded from cache", format(path, method));
-                    return memo.get(method);
-                });
+                logger.trace("{} loaded from cache", format(path, method));
+                return memo.get(method);
             }
 
             if (method.isPhantom()){
-                return Promise.lazy(() -> {
-                    logger.trace("{} skipped due to being phantom", format(path, method));
-                    return Rain.of(Drop.of(box.sentinel(), Rain.of()));
-                });
+                logger.trace("{} skipped due to being phantom", format(path, method));
+                return Promise.just(Rain.of(Drop.of(box.sentinel(), Rain.of())));
             }
 
             if (!method.isConcrete()) {
-                return Promise.lazy(() -> {
-                    logger.trace("{} skipped due to not being concrete", format(path, method));
-                    return Rain.of(Drop.of(box.sentinel(), Rain.of()));
-                });
+                logger.trace("{} skipped due to not being concrete", format(path, method));
+                return Promise.just(Rain.of(Drop.of(box.sentinel(), Rain.of())));
             }
 
             if (method.getDeclaringClass().isLibraryClass()) {
-                return Promise.lazy(() -> {
-                    logger.trace("{} skipped due to being library method", format(path, method));
-                    return Rain.of(Drop.of(box.sentinel(), Rain.of()));
-                });
+                logger.trace("{} skipped due to being library method", format(path, method));
+                return Promise.just(Rain.of(Drop.of(box.sentinel(), Rain.of())));
             }
 
-            return Promise.lazy((() -> {
-                logger.trace("{} loading", format(path, method));
-                return new CFGFactory(method);
-            })).then(builder -> {
-                return builder.build(path).effect((rain) -> {
-                    memo.put(method, rain);
-                });
-            });
+            logger.trace("{} loading", format(path, method));
+            var builder = new CFGFactory(method);
+            var promise = builder.build(path);
+            memo.put(method, promise);
+            return promise;
     }
 
     class CFGFactory {
@@ -391,19 +377,19 @@ public class LogPoints {
             // get rain of called methods
             final LList<SootMethod> methods = LList.from(cg.edgesOutOf(stmt)).map(edge -> edge.tgt());
 
+            // stmt is not kept, so expand the invokation
+            if (guard) {
+                logger.trace("{} expanding [guarded] with successors {}", format(path, method, stmt), code);
+            } else {
+                logger.trace("{} expanding [unguarded] with successors {}", format(path, method, stmt), code);
+            }
+
             if (knot) {
                 // break knot
                 return LogPoints.this.build(methods, path.push(Tuple.of(method, guard))).fmap(subrain -> {
                     logger.trace("{} undid knot", format(path, method, stmt), code);
                     return subrain.filter(v -> Promise.just(!v.sentinel())).map(v -> box.copy(v));
                 });
-            }
-
-            // stmt is not kept, so expand the invokation
-            if (guard) {
-                logger.trace("{} expanding [guarded] with successors {}", format(path, method, stmt), code);
-            } else {
-                logger.trace("{} expanding [unguarded] with successors {}", format(path, method, stmt), code);
             }
             var promise = methods.empty().<Rain<Box<Stmt>.Ref>>then(noMethods -> {
                 if (noMethods) {
