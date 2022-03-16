@@ -99,9 +99,6 @@ public class Promise<T> implements Computation<T> {
 
     @Override
     public <R> Promise<R> fmap(Function<? super T, ? extends R> f) {
-        if (resolved) {
-            return Promise.just(f.apply(value));
-        }
         return Promise.from(Computation.super.fmap(f));
     }
 

@@ -67,7 +67,7 @@ public class Rain<T> {
      * @return Rain<R>
      */
     public <R> Rain<R> map(Function<T, R> func) {
-        return this.fold(droplets -> new Rain<R>(droplets.map(drop -> new Drop<>(func.apply(drop.get()), drop.next()))));
+        return this.fold(droplets -> Rain.<R>fix(droplets.map(drop -> Drop.of(func.apply(drop.get()), drop.next()))));
     }
 
 
