@@ -23,7 +23,7 @@ public class ComputePrintlnRatio {
                     return PList.cons(Tuple.of(.0, .0), PList.of());
                 }
                 seen.add(droplet.get());
-                return PList.bind(droplet.next().empty().fmap(isEmpty -> {
+                return PList.bind(droplet.next().empty().map(isEmpty -> {
                     if (droplet.get().value().getInvokeExpr().getMethodRef().getName().equals("println")) {
                         if (isEmpty) {
                             return PList.cons(Tuple.of(1., 1.), PList.of());
@@ -43,7 +43,7 @@ public class ComputePrintlnRatio {
 
         Double average = ratios.foldr(Tuple.of(.0, .0), (cur, acc) -> {
             return Promise.just(Tuple.of((cur.fst() / cur.snd()) + acc.fst(), acc.snd() + 1));
-        }).fmap(tuple -> {
+        }).map(tuple -> {
             return tuple.fst() / tuple.snd();
         }).join();
 

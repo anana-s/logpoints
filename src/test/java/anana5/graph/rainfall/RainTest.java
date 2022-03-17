@@ -59,14 +59,14 @@ public class RainTest {
 
     @Test
     void fold() {
-        Integer actual = graph.get().<Promise<Integer>>fold(drops -> drops.foldr(0, (drop, acc) -> drop.next().fmap(n -> acc + n + drop.get()))).join();
+        Integer actual = graph.get().<Promise<Integer>>fold(drops -> drops.foldr(0, (drop, acc) -> drop.next().map(n -> acc + n + drop.get()))).join();
         assertEquals(24, actual);
     }
 
     @Test
     void paramorph() {
         Integer actual = Rain.<PList<Integer>, Integer>unfold(a, a$ -> PList.bind(a$.match(() -> PList.of(), (x, xs) -> PList.of(new Drop<>(x, xs)))))
-            .<Promise<Integer>>fold(droplets -> droplets.head().then(maybe -> maybe.match(() -> Promise.just(0), droplet -> droplet.next().fmap(x -> x + droplet.get())))).join();
+            .<Promise<Integer>>fold(droplets -> droplets.head().then(maybe -> maybe.match(() -> Promise.just(0), droplet -> droplet.next().map(x -> x + droplet.get())))).join();
         assertEquals(6, actual);
     }
 

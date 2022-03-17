@@ -87,7 +87,7 @@ public interface Computation<T> {
         }
     }
 
-    default <R> Computation<R> fmap(Function<? super T, ? extends R> f) {
+    default <R> Computation<R> map(Function<? super T, ? extends R> f) {
         return new Mapping<>(f, this);
     }
 
@@ -204,7 +204,7 @@ public interface Computation<T> {
             }
             @Override
             public Continuation accept(T t) {
-                return Continuation.accept(f.fmap(f$ -> f$.apply(t)), k);
+                return Continuation.accept(f.map(f$ -> f$.apply(t)), k);
             }
         }
 

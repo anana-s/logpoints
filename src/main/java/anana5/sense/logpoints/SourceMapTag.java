@@ -1,7 +1,5 @@
 package anana5.sense.logpoints;
 
-import javax.naming.directory.AttributeInUseException;
-
 import soot.tagkit.AttributeValueException;
 import soot.tagkit.Tag;
 

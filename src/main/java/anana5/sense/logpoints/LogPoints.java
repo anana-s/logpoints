@@ -194,7 +194,7 @@ public class LogPoints {
     }
 
     public Rain<Box<Stmt>.Ref> graph() {
-        return Rain.bind(build().fmap(rain -> {
+        return Rain.bind(build().map(rain -> {
             return rain.fold(drops -> Rain.fix(process(drops).filter(v -> Promise.just(!v.get().sentinel()))));
         }));
     }
@@ -222,9 +222,9 @@ public class LogPoints {
         var cs = methods.filter(method -> Promise.just(method.getName().equals("<clinit>")));
         var ms = methods.filter(method -> Promise.just(!method.getName().equals("<clinit>")));
 
-        return cs.map(method -> build(method, path)).foldr(Rain.<Box<Stmt>.Ref>of(), (p, acc) -> p.fmap(rain -> Rain.merge(rain, acc))).then(cr -> {
-            return ms.map(method -> build(method, path)).foldr(Rain.<Box<Stmt>.Ref>of(), (p, acc) -> p.fmap(rain -> Rain.merge(rain, acc))).then(mr -> {
-                return cr.empty().fmap(e -> {
+        return cs.map(method -> build(method, path)).foldr(Rain.<Box<Stmt>.Ref>of(), (p, acc) -> p.map(rain -> Rain.merge(rain, acc))).then(cr -> {
+            return ms.map(method -> build(method, path)).foldr(Rain.<Box<Stmt>.Ref>of(), (p, acc) -> p.map(rain -> Rain.merge(rain, acc))).then(mr -> {
+                return cr.empty().map(e -> {
                     if (e) {
                         return mr;
                     }
@@ -326,7 +326,7 @@ public class LogPoints {
         }
 
         private Promise<Rain<Box<Stmt>.Ref>> build(PList<Stmt> stmts, LList<SootMethod> path, LList<Stmt> subpath) {
-            return stmts.map(stmt -> build(stmt, path, subpath)).foldr(Rain.<Box<Stmt>.Ref>of(), (p, acc) -> p.fmap(rain -> Rain.merge(rain, acc)));
+            return stmts.map(stmt -> build(stmt, path, subpath)).foldr(Rain.<Box<Stmt>.Ref>of(), (p, acc) -> p.map(rain -> Rain.merge(rain, acc)));
         }
 
         private Promise<Rain<Box<Stmt>.Ref>> build(Stmt stmt, LList<SootMethod> path, LList<Stmt> subpath) {
@@ -362,7 +362,7 @@ public class LogPoints {
                 // skip this statement
                 logger.trace("{} skipped with successors {}", format(path, method, stmt), code);
                 return build(next, path, subpath.push(stmt)).then(rain -> {
-                    return rain.empty().fmap(e -> {
+                    return rain.empty().map(e -> {
                         if (e) {
                             memo0.remove(stmt);
                         } else {
@@ -409,7 +409,7 @@ public class LogPoints {
                     logger.trace("{} expands to nothing", format(path, method, stmt));
                     return build(next, path, subpath.push(stmt));
                 }
-                return LogPoints.this.build(methods, path.push(method)).fmap(subrain -> {
+                return LogPoints.this.build(methods, path.push(method)).map(subrain -> {
                     subrain = subrain.map(v -> subbox.copy(v));
 
                     return subrain.fold(drops -> Rain.merge(drops.map(drop -> {
@@ -421,7 +421,7 @@ public class LogPoints {
                     })));
                 });
             }).then(rain -> {
-                return rain.empty().fmap(e -> {
+                return rain.empty().map(e -> {
                     if (e) {
                         memo0.remove(stmt);
                     } else {

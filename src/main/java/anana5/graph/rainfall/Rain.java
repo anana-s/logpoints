@@ -5,7 +5,6 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
-import java.util.function.Predicate;
 
 import anana5.util.PList;
 import anana5.util.Promise;
@@ -50,7 +49,7 @@ public class Rain<T> {
      * @return R
      */
     public <R> R fold(Function<PList<Drop<T, R>>, R> func) {
-        return func.apply(unfix.map(drop -> drop.fmap(let -> let.fold(func))));
+        return func.apply(unfix.map(drop -> Drop.of(drop.get(), drop.next().fold(func))));
     }
 
 
@@ -59,7 +58,7 @@ public class Rain<T> {
      * @return Rain<T>
      */
     public static <S, T> Rain<T> unfold(S s, Function<S, PList<Drop<T, S>>> func) {
-        return Rain.fix(func.apply(s).map(droplet -> droplet.fmap(let -> Rain.unfold(let, func))));
+        return Rain.fix(func.apply(s).map(drop -> Drop.of(drop.get(), Rain.unfold(drop.next(), func))));
     }
 
     /**
@@ -129,7 +128,7 @@ public class Rain<T> {
     }
 
     public static <T> Rain<T> bind(Promise<Rain<T>> promise) {
-        return new Rain<>(PList.bind(promise.fmap(rain -> rain.unfix)));
+        return new Rain<>(PList.bind(promise.map(rain -> rain.unfix)));
     }
 
     @Deprecated
@@ -143,11 +142,11 @@ public class Rain<T> {
 
     public Rain<T> filter(Function<? super T, ? extends Promise<? extends Boolean>> predicate) {
         var droplets = unfix().filter(droplet -> predicate.apply(droplet.get()));
-        droplets = droplets.map(droplet -> droplet.fmap(let -> let.filter(predicate)));
+        droplets = droplets.map(drop -> Drop.of(drop.get(), drop.next().filter(predicate)));
         return new Rain<>(droplets);
     }
 
     public Promise<Rain<T>> resolve() {
-        return traverse(t -> Promise.lazy()).fmap($ -> this);
+        return traverse(t -> Promise.lazy()).map($ -> this);
     }
 }

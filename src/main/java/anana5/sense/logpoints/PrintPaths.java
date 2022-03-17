@@ -26,7 +26,7 @@ public class PrintPaths {
             }
 
             var paths$ = droplet.next();
-            return PList.bind(paths$.empty().fmap(e -> {
+            return PList.bind(paths$.empty().map(e -> {
                 if (e) {
                     var path$ = PList.cons(LList.<Vertex<Stmt>>nil(), PList.of());
                     seen.put(vertex, path$);

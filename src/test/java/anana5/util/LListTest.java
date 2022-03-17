@@ -68,11 +68,6 @@ class LListTest {
             return Promise.lazy();
         }).join();
         assertEquals(Arrays.asList(1,2,3), actual);
-        a.traverse((a, b) -> b.then($ -> a), value -> {
-            actual.add(value);
-            return Promise.lazy();
-        }).join();
-        assertEquals(Arrays.asList(1,2,3,3,2,1), actual);
     }
 
     @Test

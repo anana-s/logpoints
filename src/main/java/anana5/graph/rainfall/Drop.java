@@ -1,10 +1,5 @@
 package anana5.graph.rainfall;
 
-import java.util.function.BiFunction;
-import java.util.function.Function;
-
-import anana5.graph.Vertex;
-
 public class Drop<T, F> {
 
     final private T v;
@@ -30,13 +25,5 @@ public class Drop<T, F> {
 
     public F next() {
         return this.f;
-    }
-
-    public <G> Drop<T, G> fmap(Function<? super F, ? extends G> func) {
-        return new Drop<>(v, func.apply(f));
-    }
-
-    public <G> Drop<T, G> fmap(BiFunction<? super T, ? super F, ? extends G> func) {
-        return new Drop<>(v, func.apply(v, f));
     }
 }

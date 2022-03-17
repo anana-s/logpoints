@@ -98,8 +98,8 @@ public class Promise<T> implements Computation<T> {
     }
 
     @Override
-    public <R> Promise<R> fmap(Function<? super T, ? extends R> f) {
-        return Promise.from(Computation.super.fmap(f));
+    public <R> Promise<R> map(Function<? super T, ? extends R> f) {
+        return Promise.from(Computation.super.map(f));
     }
 
     @Override
@@ -126,7 +126,7 @@ public class Promise<T> implements Computation<T> {
     }
 
     public static <T> Promise<PList<T>> all(PList<Promise<T>> promises) {
-        return promises.foldl(PList.of(), (p, acc) -> p.fmap(t -> PList.cons(t, acc)));
+        return promises.foldl(PList.of(), (p, acc) -> p.map(t -> PList.cons(t, acc)));
         // return promises.fold(p -> p.then(listF -> listF.match(() -> Promise.nil(), (pT, pAcc) -> pT.then(t -> pAcc.then(acc -> Promise.just(LList.cons(t, acc)))))));
     }
 }
