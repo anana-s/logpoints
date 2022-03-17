@@ -27,7 +27,7 @@ public class Tuple<FST, SND> {
         return Objects.hash(a, b);
     }
 
-    public static <A, B> Tuple<LList<A>, LList<B>> unzip(LList<Tuple<A, B>> tuples) {
+    public static <A, B> Tuple<PList<A>, PList<B>> unzip(PList<Tuple<A, B>> tuples) {
         return Tuple.of(tuples.map(Tuple::fst), tuples.map(Tuple::snd));
     }
 }

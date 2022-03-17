@@ -11,19 +11,19 @@ import org.junit.jupiter.api.Test;
 
 class LListTest {
 
-    private final LList<Integer> a = LList.of(1, 2, 3);
-    private final LList<Integer> b = LList.of(4, 5, 6);
-    private final LList<LList<Integer>> c = LList.of(a, b);
+    private final PList<Integer> a = PList.of(1, 2, 3);
+    private final PList<Integer> b = PList.of(4, 5, 6);
+    private final PList<PList<Integer>> c = PList.of(a, b);
 
     @Test
     void foldr() {
-        var actual = LList.bind(a.foldr(LList.of(), (a, b) -> Promise.just(b.push(a)))).collect().join();
+        var actual = PList.bind(a.foldr(PList.of(), (a, b) -> Promise.just(b.push(a)))).collect().join();
         assertEquals(Arrays.asList(3, 2, 1), actual);
     }
 
     @Test
     void foldl() {
-        var actual = LList.bind(a.foldl(LList.of(), (a, b) -> Promise.just(b.push(a)))).collect().join();
+        var actual = PList.bind(a.foldl(PList.of(), (a, b) -> Promise.just(b.push(a)))).collect().join();
         assertEquals(Arrays.asList(1, 2, 3), actual);
     }
 
@@ -37,7 +37,7 @@ class LListTest {
 
     @Test
     void merge() {
-        LList.merge(a, b).collect().then(r$ -> {
+        PList.merge(a, b).collect().then(r$ -> {
             assertEquals(Arrays.asList(1, 2, 3, 4, 5, 6), r$);
             return Promise.<Void>lazy();
         }).join();
@@ -78,7 +78,7 @@ class LListTest {
     @Test
     void bind() {
         List<Integer> actual = new ArrayList<>();
-        LList.unfold(3, i -> {
+        PList.unfold(3, i -> {
             if (i == 0) {
                 return Promise.just(ListF.nil());
             }

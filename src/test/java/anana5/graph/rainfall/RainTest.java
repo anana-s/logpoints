@@ -10,12 +10,12 @@ import java.util.function.Supplier;
 
 import org.junit.jupiter.api.Test;
 
-import anana5.util.LList;
+import anana5.util.PList;
 import anana5.util.Promise;
 
 public class RainTest {
 
-    private final LList<Integer> a = LList.of(1, 2, 3);
+    private final PList<Integer> a = PList.of(1, 2, 3);
 
     private final Supplier<Rain<Integer>> graph = () -> Rain.of(
         Drop.of(1, Rain.of(
@@ -65,7 +65,7 @@ public class RainTest {
 
     @Test
     void paramorph() {
-        Integer actual = Rain.<LList<Integer>, Integer>unfold(a, a$ -> LList.bind(a$.match(() -> LList.of(), (x, xs) -> LList.of(new Drop<>(x, xs)))))
+        Integer actual = Rain.<PList<Integer>, Integer>unfold(a, a$ -> PList.bind(a$.match(() -> PList.of(), (x, xs) -> PList.of(new Drop<>(x, xs)))))
             .<Promise<Integer>>fold(droplets -> droplets.head().then(maybe -> maybe.match(() -> Promise.just(0), droplet -> droplet.next().fmap(x -> x + droplet.get())))).join();
         assertEquals(6, actual);
     }
@@ -73,7 +73,7 @@ public class RainTest {
     @Test
     void filter() {
         Rain<Integer> rain = Rain.unfold(0, i -> {
-            return LList.of(new Drop<>(i, i + 1));
+            return PList.of(new Drop<>(i, i + 1));
         });
 
         rain = rain.filter(i -> {
@@ -91,7 +91,7 @@ public class RainTest {
 
     @Test
     void mergeEmtpy() {
-        Rain<Integer> rain = Rain.merge(LList.of());
+        Rain<Integer> rain = Rain.merge(PList.of());
         Promise<Integer> pActual = rain.fold(droplets -> droplets.foldl(Promise.just(0), (droplet, pAcc) -> null).then(Function.identity()));
         assertEquals(0, pActual.join());
     }
@@ -105,10 +105,10 @@ public class RainTest {
     @Test
     void resolve() {
         var actual = new ArrayList<>();
-        graph.get().resolve().traverse(v -> {
+        graph.get().resolve().then(rain -> rain.traverse(v -> {
             actual.add(v);
             return Promise.lazy();
-        }).join();
+        })).join();
         assertEquals(Arrays.asList(1, 2, 4, 5, 3), actual);
     }
 }

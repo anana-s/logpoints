@@ -7,7 +7,7 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
-import anana5.util.LList;
+import anana5.util.PList;
 import anana5.util.Promise;
 
 /**
@@ -15,26 +15,26 @@ import anana5.util.Promise;
  */
 public class Rain<T> {
 
-    final private LList<Drop<T, Rain<T>>> unfix;
+    final private PList<Drop<T, Rain<T>>> unfix;
 
-    public LList<Drop<T, Rain<T>>> unfix() {
+    public PList<Drop<T, Rain<T>>> unfix() {
         return this.unfix;
     }
 
-    private Rain(LList<Drop<T, Rain<T>>> drops) {
+    private Rain(PList<Drop<T, Rain<T>>> drops) {
         this.unfix = drops;
     }
 
     @SafeVarargs
     public static <T> Rain<T> of(Drop<T, Rain<T>>... drops) {
-        return new Rain<>(LList.of(drops));
+        return new Rain<>(PList.of(drops));
     }
 
     public static <T> Rain<T> from(Iterable<Drop<T, Rain<T>>> drops) {
-        return new Rain<>(LList.from(drops));
+        return new Rain<>(PList.from(drops));
     }
 
-    public static <T> Rain<T> fix(LList<Drop<T, Rain<T>>> drops) {
+    public static <T> Rain<T> fix(PList<Drop<T, Rain<T>>> drops) {
         return new Rain<>(drops);
     }
 
@@ -49,7 +49,7 @@ public class Rain<T> {
      * @param func
      * @return R
      */
-    public <R> R fold(Function<LList<Drop<T, R>>, R> func) {
+    public <R> R fold(Function<PList<Drop<T, R>>, R> func) {
         return func.apply(unfix.map(drop -> drop.fmap(let -> let.fold(func))));
     }
 
@@ -58,7 +58,7 @@ public class Rain<T> {
      * @param func
      * @return Rain<T>
      */
-    public static <S, T> Rain<T> unfold(S s, Function<S, LList<Drop<T, S>>> func) {
+    public static <S, T> Rain<T> unfold(S s, Function<S, PList<Drop<T, S>>> func) {
         return Rain.fix(func.apply(s).map(droplet -> droplet.fmap(let -> Rain.unfold(let, func))));
     }
 
@@ -117,19 +117,19 @@ public class Rain<T> {
     @SafeVarargs
     public static <T> Rain<T> merge(Rain<T>... rain) {
         @SuppressWarnings("unchecked")
-        LList<Drop<T, Rain<T>>>[] droplets = new LList[rain.length];
+        PList<Drop<T, Rain<T>>>[] droplets = new PList[rain.length];
         for (int i = 0; i < rain.length; i++) {
             droplets[i] = rain[i].unfix;
         }
-        return new Rain<>(LList.merge(droplets));
+        return new Rain<>(PList.merge(droplets));
     }
 
-    public static <T> Rain<T> merge(LList<Rain<T>> rains) {
+    public static <T> Rain<T> merge(PList<Rain<T>> rains) {
         return new Rain<>(rains.flatmap(r -> r.unfix));
     }
 
     public static <T> Rain<T> bind(Promise<Rain<T>> promise) {
-        return new Rain<>(LList.bind(promise.fmap(rain -> rain.unfix)));
+        return new Rain<>(PList.bind(promise.fmap(rain -> rain.unfix)));
     }
 
     @Deprecated
@@ -147,8 +147,7 @@ public class Rain<T> {
         return new Rain<>(droplets);
     }
 
-    public Rain<T> resolve() {
-        Promise<Void> promise = traverse(t -> Promise.lazy());
-        return Rain.bind(promise.fmap($ -> this));
+    public Promise<Rain<T>> resolve() {
+        return traverse(t -> Promise.lazy()).fmap($ -> this);
     }
 }

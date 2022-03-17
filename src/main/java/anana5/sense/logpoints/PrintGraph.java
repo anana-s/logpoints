@@ -3,7 +3,7 @@ package anana5.sense.logpoints;
 import java.util.Arrays;
 
 import anana5.graph.rainfall.Rain;
-import anana5.util.LList;
+import anana5.util.PList;
 import anana5.util.Promise;
 import net.sourceforge.argparse4j.inf.Namespace;
 import soot.jimple.Stmt;
@@ -24,7 +24,7 @@ public class PrintGraph {
         } catch (StackOverflowError e) {
             var trace = e.getStackTrace();
             trace = Arrays.copyOfRange(trace, trace.length - 50, trace.length);
-            LList.of(trace).traverse(element -> {
+            PList.of(trace).traverse(element -> {
                 System.err.println(element);
                 return Promise.nil();
             }).join();

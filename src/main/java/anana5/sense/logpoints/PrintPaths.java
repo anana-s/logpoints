@@ -4,8 +4,8 @@ import java.util.HashMap;
 import java.util.StringJoiner;
 
 import anana5.graph.Vertex;
+import anana5.util.PList;
 import anana5.util.LList;
-import anana5.util.Path;
 import anana5.util.Promise;
 import soot.jimple.Stmt;
 
@@ -17,8 +17,8 @@ public class PrintPaths {
 
         graph.traverse(($, $$) -> Promise.lazy()).join();
 
-        var seen = new HashMap<Vertex<Stmt>, LList<Path<Vertex<Stmt>>>>();
-        LList<Path<Vertex<Stmt>>> paths = graph.fold(droplets -> droplets.flatmap(droplet -> {
+        var seen = new HashMap<Vertex<Stmt>, PList<LList<Vertex<Stmt>>>>();
+        PList<LList<Vertex<Stmt>>> paths = graph.fold(droplets -> droplets.flatmap(droplet -> {
             var vertex = droplet.get();
 
             if (seen.containsKey(vertex)) {
@@ -26,9 +26,9 @@ public class PrintPaths {
             }
 
             var paths$ = droplet.next();
-            return LList.bind(paths$.empty().fmap(e -> {
+            return PList.bind(paths$.empty().fmap(e -> {
                 if (e) {
-                    var path$ = LList.cons(Path.<Vertex<Stmt>>nil(), LList.of());
+                    var path$ = PList.cons(LList.<Vertex<Stmt>>nil(), PList.of());
                     seen.put(vertex, path$);
                     return path$;
                 } else {
