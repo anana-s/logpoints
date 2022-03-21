@@ -2,19 +2,38 @@ package anana5.util;
 
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 public class LList<T> {
     private final ListF<T, LList<T>> unfix;
     private final int length;
 
-    public LList() {
+    private LList() {
         unfix = ListF.nil();
         length = 0;
+    }
+
+    private LList(ListF<T, LList<T>> unfix) {
+        this.unfix = unfix;
+        length = unfix.match(() -> 0, (x, xs) -> 1 + xs.length());
     }
 
     private LList(T t, LList<T> path) {
         unfix = ListF.cons(t, path);
         length = path.length + 1;
+    }
+
+    public static <T> LList<T> fix(ListF<T, LList<T>> unfix) {
+        return new LList<>(unfix);
+    }
+
+    @SafeVarargs
+    public static <T> LList<T> of(T... ts) {
+        var llist = LList.<T>nil();
+        for (int i = ts.length - 1; i >= 0; i--) {
+            llist = LList.cons(ts[i], llist);
+        }
+        return llist;
     }
 
     public static <T> LList<T> nil() {
@@ -54,8 +73,8 @@ public class LList<T> {
     }
 
 
-    public <R> R foldl(BiFunction<R, T, R> func, R r) {
-        return unfix.match(() -> r, (t, f) -> func.apply(f.foldl(func, r), t));
+    public <R> R foldl(R r, BiFunction<R, T, R> func) {
+        return unfix.match(() -> r, (t, f) -> func.apply(f.foldl(r, func), t));
     }
 
     public void traverse(Consumer<T> visitor) {
@@ -64,5 +83,9 @@ public class LList<T> {
             visitor.accept(path.head().get());
             path = path.tail().get();
         }
+    }
+
+    public <R> LList<R> map(Function<T, R> func) {
+        return foldl(LList.<R>nil(), (l, t) -> LList.cons(func.apply(t), l));
     }
 }

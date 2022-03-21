@@ -8,12 +8,14 @@ public class Recursive {
 
     static void test() {
         if (rng.nextBoolean()) {
+            System.out.print("[");
             test();
-            System.out.println("sweet pineapple!");
+            System.out.print("]");
         }
     }
 
     public static void main(String[] args) {
         test();
+        System.out.println();
     }
 }
