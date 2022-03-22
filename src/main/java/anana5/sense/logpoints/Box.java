@@ -7,8 +7,19 @@ import anana5.graph.Vertex;
 public class Box<T> {
 
     public abstract class Ref implements Vertex<T> {
-        abstract Box<T> box();
-        abstract boolean sentinel();
+        private final boolean sentinel;
+
+        private Ref(boolean sentinel) {
+            this.sentinel = sentinel;
+        }
+
+        public Box<T> box() {
+            return Box.this;
+        }
+
+        public boolean sentinel() {
+            return sentinel;
+        }
 
         @Override
         public String toString() {
@@ -21,19 +32,10 @@ public class Box<T> {
 
     private class SimpleRef extends Ref {
         private final T value;
-        private final boolean sentinel;
 
         private SimpleRef(T value, boolean sentinel) {
+            super(sentinel);
             this.value = value;
-            this.sentinel = sentinel;
-        }
-
-        public Box<T> box() {
-            return Box.this;
-        }
-
-        public boolean sentinel() {
-            return sentinel;
         }
 
         @Override
@@ -62,14 +64,17 @@ public class Box<T> {
         }
     }
 
-    private class CopyRef extends SimpleRef {
+    private class CopyRef extends Ref {
         private final Ref ref;
-        private final T context;
 
-        private CopyRef(Ref ref, T context) {
-            super(ref.value(), ref.sentinel());
+        private CopyRef(Ref ref) {
+            super(ref.sentinel());
             this.ref = ref;
-            this.context = context;
+        }
+
+        @Override
+        public T value() {
+            return ref.value();
         }
 
         @Override
@@ -84,12 +89,12 @@ public class Box<T> {
                 return false;
             }
             Box<?>.CopyRef other = (Box<?>.CopyRef) obj;
-            return Objects.equals(box(), other.box()) && Objects.equals(context, other.context) && Objects.equals(ref, other.ref);
+            return Objects.equals(box(), other.box()) && Objects.equals(ref, other.ref);
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(box(), ref, context);
+            return Objects.hash(box(), ref);
         }
     }
 
@@ -100,15 +105,17 @@ public class Box<T> {
         return new SimpleRef(value, false);
     }
 
-    public Ref sentinel(T value) {
-        return new SimpleRef(value, true);
+    public Ref of(boolean sentinel, T value) {
+        if (sentinel == false && value == null) {
+            throw new NullPointerException();
+        }
+        return new SimpleRef(value, sentinel);
     }
 
-    public Ref sentinel() {
-        return new SimpleRef(null, true);
-    }
-
-    public Ref copy(Ref other, T context) {
-        return new CopyRef(other, context);
+    public Ref copy(Ref other) {
+        if (other.box() == this) {
+            return other;
+        }
+        return new CopyRef(other);
     }
 }

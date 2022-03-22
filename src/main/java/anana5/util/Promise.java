@@ -69,7 +69,10 @@ public class Promise<T> implements Computation<T> {
             if (super.resolved) {
                 return Continuation.apply(k, super.value);
             } else {
-                return Continuation.accept(c, k.effect(this::resolve));
+                return Continuation.accept(c, k.map(s -> {
+                    resolve(s);
+                    return s;
+                }));
             }
         }
         @Override
@@ -90,10 +93,14 @@ public class Promise<T> implements Computation<T> {
 
     @Override
     public Promise<T> effect(Consumer<T> consumer) {
-        if (resolved) {
-            consumer.accept(value);
-            return Promise.just(null);
-        }
+        return effect(t -> {
+            consumer.accept(t);
+            return Promise.nil();
+        });
+    }
+
+    @Override
+    public Promise<T> effect(Function<? super T, ? extends Computation<Void>> consumer) {
         return Promise.from(Computation.super.effect(consumer));
     }
 

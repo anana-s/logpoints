@@ -177,4 +177,14 @@ public class PList<T> {
             return this;
         }
     }
+
+    public Promise<Boolean> contains(T t) {
+        return unfix.<Boolean>then(listF -> listF.match(() -> Promise.just(false), (head, tail) -> {
+            if (head.equals(t)) {
+                return Promise.just(true);
+            } else {
+                return tail.contains(t);
+            }
+        }));
+    }
 }

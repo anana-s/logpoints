@@ -70,21 +70,14 @@ public interface Computation<T> {
     }
 
     default Computation<T> effect(Consumer<T> consumer) {
-        return new SideEffect<>(consumer, this);
+        return effect(t -> {
+            consumer.accept(t);
+            return Computation.nil();
+        });
     }
 
-    static class SideEffect<T> implements Computation<T> {
-        final Consumer<T> consumer;
-        final Computation<T> computation;
-        SideEffect(Consumer<T> consumer, Computation<T> computation) {
-            this.consumer = consumer;
-            this.computation = computation;
-        }
-
-        @Override
-        public Continuation accept(Callback<T> k) {
-            return Continuation.accept(computation, k.effect(consumer));
-        }
+    default Computation<T> effect(Function<? super T, ? extends Computation<Void>> consumer) {
+        return bind(consumer).bind(nil -> this);
     }
 
     default <R> Computation<R> map(Function<? super T, ? extends R> f) {
@@ -154,24 +147,6 @@ public interface Computation<T> {
             public Continuation accept(S t) {
                 f.accept(t);
                 return null;
-            }
-        }
-
-        default Callback<S> effect(Consumer<S> f) {
-            return new SideEffect<>(f, this);
-        }
-
-        static class SideEffect<S> implements Callback<S> {
-            final Consumer<S> f;
-            final Callback<S> k;
-            SideEffect(Consumer<S> f, Callback<S> k) {
-                this.f = f;
-                this.k = k;
-            }
-            @Override
-            public Continuation accept(S t) {
-                f.accept(t);
-                return Continuation.apply(k, t);
             }
         }
 

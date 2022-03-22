@@ -6,16 +6,11 @@ import soot.jimple.Stmt;
 public class StmtVertexFormatter {
     static String format(Vertex<Stmt> vertex) {
         var stmt = vertex.value();
-        if (stmt == null) {
-            return "[root]";
-        }
-
-        if (stmt.containsInvokeExpr()) {
-            var expr = stmt.getInvokeExpr();
-            var mref = expr.getMethodRef();
-            return mref.getName() + expr.getArgs().toString();
-        } else {
+        if (stmt == null || !stmt.containsInvokeExpr()) {
             return vertex.toString();
         }
+        var expr = stmt.getInvokeExpr();
+        var mref = expr.getMethodRef();
+        return mref.getName() + expr.getArgs().toString();
     }
 }
