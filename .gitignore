@@ -1,6 +1,7 @@
 *.dot
 *.log
 *.tsv
+*.csv
 
 # maven
 target/

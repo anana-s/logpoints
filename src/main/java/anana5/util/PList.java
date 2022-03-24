@@ -122,7 +122,7 @@ public class PList<T> {
     }
 
     public static <T> PList<T> bind(PList<Promise<T>> promises) {
-        return PList.bind(Promise.all(promises));
+        return PList.bind(promises.unfix.map(listF -> listF.match(() -> PList.<T>nil(), (p, next) -> PList.fix(p.map(t -> ListF.cons(t, PList.bind(next)))))));
     }
 
     @Deprecated

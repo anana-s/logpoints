@@ -16,6 +16,7 @@ public class Cmd {
             .description("Constructs the interprocedural flow graph of logging statements.");
 
         parser.addArgument("-p", "--prepend")
+            .setDefault(false)
             .action(Arguments.storeTrue());
 
         parser.addArgument("-c", "--classpath")
@@ -40,6 +41,10 @@ public class Cmd {
             .nargs("?")
             .type(PrintStream.class)
             .setDefault(System.out);
+
+        parser.addArgument("--trace")
+            .setDefault(false)
+            .action(Arguments.storeTrue());
 
         parser.addArgument("classes").nargs("+");
 

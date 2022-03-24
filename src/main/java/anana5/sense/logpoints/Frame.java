@@ -8,12 +8,12 @@ import soot.jimple.Stmt;
 public class Frame {
     private final Stmt invoker;
     private final SootMethod method;
-    private final Box<Stmt> box;
+    private final Box box;
 
-    public Frame(Stmt invoker, SootMethod method) {
+    public Frame(Stmt invoker, SootMethod method, Box box) {
         this.invoker = invoker;
         this.method = method;
-        this.box = new Box<>();
+        this.box = box;
     }
 
     public Stmt invoker() {
@@ -24,7 +24,7 @@ public class Frame {
         return method;
     }
 
-    public Box<Stmt> box() {
+    public Box box() {
         return box;
     }
 

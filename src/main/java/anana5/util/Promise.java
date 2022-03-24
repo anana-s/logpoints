@@ -92,14 +92,6 @@ public class Promise<T> implements Computation<T> {
     }
 
     @Override
-    public Promise<T> effect(Consumer<T> consumer) {
-        return effect(t -> {
-            consumer.accept(t);
-            return Promise.nil();
-        });
-    }
-
-    @Override
     public Promise<T> effect(Function<? super T, ? extends Computation<Void>> consumer) {
         return Promise.from(Computation.super.effect(consumer));
     }

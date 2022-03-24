@@ -1,19 +1,52 @@
 package anana5.sense.logpoints;
 
+import java.nio.ByteBuffer;
 import java.util.Objects;
 
+import org.apache.commons.lang3.ArrayUtils;
+
 import anana5.graph.Vertex;
+import soot.jimple.Stmt;
 
-public class Box<T> {
+public class Box {
+    private static int probe;
+    private final byte[] hash;
 
-    public abstract class Ref implements Vertex<T> {
+    public Box() {
+        this.hash = ByteBuffer.allocate(4).putInt(probe++).array();
+    }
+
+    public Ref of(Stmt value) {
+        if (value == null) {
+            throw new NullPointerException();
+        }
+        return new SimpleRef(value, false);
+    }
+
+    public Ref of(boolean sentinel, Stmt value) {
+        if (sentinel == false && value == null) {
+            throw new NullPointerException();
+        }
+        return new SimpleRef(value, sentinel);
+    }
+
+    public Ref of(Ref other) {
+        if (other.box() == this) {
+            return other;
+        }
+        return new CopyRef(other);
+    }
+
+    public abstract class Ref implements Vertex<Stmt> {
         private final boolean sentinel;
+        private final byte[] hash;
 
         private Ref(boolean sentinel) {
             this.sentinel = sentinel;
+            this.hash = ByteBuffer.allocate(4).putInt(probe++).array();
         }
 
-        public Box<T> box() {
+        public Box box() {
             return Box.this;
         }
 
@@ -21,25 +54,30 @@ public class Box<T> {
             return sentinel;
         }
 
+        public byte[] hash() {
+            return ArrayUtils.addAll(Box.this.hash, this.hash);
+        }
+
         @Override
         public String toString() {
+            var v = value();
             if (sentinel()) {
-                return String.format("sentinel[%s]", value());
+                return String.format("sentinel[%s]@[%d]", v, v.hashCode());
             }
-            return String.format("[%s]", value());
+            return String.format("[%s]@[%d]", v, v.hashCode());
         }
     }
 
     private class SimpleRef extends Ref {
-        private final T value;
+        private final Stmt value;
 
-        private SimpleRef(T value, boolean sentinel) {
+        private SimpleRef(Stmt value, boolean sentinel) {
             super(sentinel);
             this.value = value;
         }
 
         @Override
-        public T value() {
+        public Stmt value() {
             return value;
         }
 
@@ -51,10 +89,10 @@ public class Box<T> {
             if (obj == this) {
                 return true;
             }
-            if (!(obj instanceof Box<?>.SimpleRef)) {
+            if (!(obj instanceof Box.SimpleRef)) {
                 return false;
             }
-            Box<?>.SimpleRef other = (Box<?>.SimpleRef) obj;
+            Box.SimpleRef other = (Box.SimpleRef) obj;
             return Objects.equals(box(), other.box()) && Objects.equals(value, other.value);
         }
 
@@ -73,7 +111,7 @@ public class Box<T> {
         }
 
         @Override
-        public T value() {
+        public Stmt value() {
             return ref.value();
         }
 
@@ -85,10 +123,10 @@ public class Box<T> {
             if (obj == this) {
                 return true;
             }
-            if (!(obj instanceof Box<?>.CopyRef)) {
+            if (!(obj instanceof Box.CopyRef)) {
                 return false;
             }
-            Box<?>.CopyRef other = (Box<?>.CopyRef) obj;
+            Box.CopyRef other = (Box.CopyRef) obj;
             return Objects.equals(box(), other.box()) && Objects.equals(ref, other.ref);
         }
 
@@ -96,26 +134,5 @@ public class Box<T> {
         public int hashCode() {
             return Objects.hash(box(), ref);
         }
-    }
-
-    public Ref of(T value) {
-        if (value == null) {
-            throw new NullPointerException();
-        }
-        return new SimpleRef(value, false);
-    }
-
-    public Ref of(boolean sentinel, T value) {
-        if (sentinel == false && value == null) {
-            throw new NullPointerException();
-        }
-        return new SimpleRef(value, sentinel);
-    }
-
-    public Ref copy(Ref other) {
-        if (other.box() == this) {
-            return other;
-        }
-        return new CopyRef(other);
     }
 }

@@ -14,9 +14,26 @@ public class PromiseTest {
         Promise.lazy(() -> {
             actual.add(0);
             return 0;
-        }).effect(i -> {
+        }).then(i -> {
             actual.add(1);
+            return Promise.just(i);
         }).join();
         assertEquals(Arrays.asList(0, 1), actual);
+    }
+    @Test
+    void resolution() {
+        var actual = new ArrayList<>();
+        var promise = Promise.lazy(() -> {
+            actual.add(0);
+            return 0;
+        });
+
+        promise.then(i -> Promise.just(i)).join();
+        promise.map(i -> i).join();
+        promise.then(i -> Promise.just(i)).map(i -> i).join();
+
+        promise.join();
+
+        assertEquals(Arrays.asList(0), actual);
     }
 }

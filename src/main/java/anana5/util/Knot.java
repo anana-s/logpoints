@@ -9,10 +9,10 @@ public class Knot<T> {
         knot = Promise.just(null);
     }
 
-    public static <A, B> Tuple<Promise<A>, Promise<B>> tie(Function<Promise<A>, B> fa, Function<Promise<B>, A> fb) {
+    public static <A, B> Promise<A> tie(Function<Promise<A>, B> fa, Function<Promise<B>, A> fb) {
         Knot<B> knot = new Knot<>();
         var out = Promise.lazy(() -> fb.apply(knot.knot));
         knot.knot = Promise.lazy(() -> fa.apply(out));
-        return Tuple.of(out, knot.knot);
+        return out;
     }
 }

@@ -69,13 +69,6 @@ public interface Computation<T> {
         }
     }
 
-    default Computation<T> effect(Consumer<T> consumer) {
-        return effect(t -> {
-            consumer.accept(t);
-            return Computation.nil();
-        });
-    }
-
     default Computation<T> effect(Function<? super T, ? extends Computation<Void>> consumer) {
         return bind(consumer).bind(nil -> this);
     }
