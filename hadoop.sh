@@ -1,6 +1,6 @@
 #!/usr/bin/env -S bash -e
 
-mvn install 1>&2
+mvn install &> /dev/null
 
 java -Dorg.slf4j.simpleLogger.defaultLogLevel=trace -XX:+UseSerialGC -Xmx90g -cp target/logpoints-1.0.0-SNAPSHOT-jar-with-dependencies.jar anana5.sense.logpoints.$1 \
     --prepend \
