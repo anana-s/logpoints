@@ -15,10 +15,8 @@ public class PrintPaths {
 
         var graph = LogPoints.v().graph();
 
-        graph.traverse(($, $$) -> Promise.lazy()).join();
-
-        var seen = new HashMap<Vertex<Stmt>, PList<LList<Vertex<Stmt>>>>();
-        PList<LList<Vertex<Stmt>>> paths = graph.fold(droplets -> droplets.flatmap(droplet -> {
+        var seen = new HashMap<Box.Ref, PList<LList<Box.Ref>>>();
+        PList<LList<Box.Ref>> paths = graph.rain().fold(droplets -> droplets.flatmap(droplet -> {
             var vertex = droplet.get();
 
             if (seen.containsKey(vertex)) {
@@ -28,7 +26,7 @@ public class PrintPaths {
             var paths$ = droplet.next();
             return PList.bind(paths$.empty().map(e -> {
                 if (e) {
-                    var path$ = PList.cons(LList.<Vertex<Stmt>>nil(), PList.of());
+                    var path$ = PList.cons(LList.<Box.Ref>nil(), PList.of());
                     seen.put(vertex, path$);
                     return path$;
                 } else {

@@ -37,7 +37,7 @@ public class Box {
         return new CopyRef(other);
     }
 
-    public abstract class Ref implements Vertex<Stmt> {
+    public abstract class Ref {
         private final boolean sentinel;
         private final byte[] hash;
 
@@ -57,6 +57,8 @@ public class Box {
         public byte[] hash() {
             return ArrayUtils.addAll(Box.this.hash, this.hash);
         }
+
+        public abstract Stmt value();
 
         @Override
         public String toString() {

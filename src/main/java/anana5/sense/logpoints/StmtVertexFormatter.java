@@ -6,7 +6,7 @@ import anana5.graph.Vertex;
 import soot.jimple.Stmt;
 
 public class StmtVertexFormatter {
-    static String format(Vertex<Stmt> vertex) {
+    static String format(Box.Ref vertex) {
         var stmt = vertex.value();
 
         if (stmt == null || !stmt.containsInvokeExpr()) {

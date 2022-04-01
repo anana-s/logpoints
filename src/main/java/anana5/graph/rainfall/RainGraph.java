@@ -1,44 +1,112 @@
 package anana5.graph.rainfall;
 
 import java.util.Collection;
-import java.util.function.BiConsumer;
-import java.util.function.BiFunction;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.function.Consumer;
 
 import anana5.graph.Edge;
 import anana5.graph.Graph;
 import anana5.graph.Vertex;
+import anana5.util.PList;
+import anana5.util.Promise;
 
-public class RainGraph<T> implements Graph<T, Vertex<T>, Edge<T, Vertex<T>>> {
-    private Rain<T> rain;
+public class RainGraph<T> implements Graph<T, RainGraph<T>.DropVertex, RainGraph<T>.DropEdge> {
 
-    @Override
-    public void traverse(Consumer<? super Vertex<T>> consumer) {
-        // TODO Auto-generated method stub
-        
+    class DropVertex implements Vertex<T> {
+        private Drop<T, Rain<T>> drop;
+
+        private DropVertex(Drop<T, Rain<T>> drop) {
+            this.drop = drop;
+        }
+
+        @Override
+        public T value() {
+            return drop.get();
+        }
+
+        @Override
+        public Collection<DropVertex> next() {
+            return drop.next().unfix().map(DropVertex::new).collect().join();
+        }
+
+    }
+
+    class DropEdge implements Edge<T> {
+        private DropVertex source, target;
+
+        private DropEdge(DropVertex source, DropVertex target) {
+            this.source = source;
+            this.target = target;
+        }
+
+        @Override
+        public RainGraph<T>.DropVertex source() {
+            return this.source;
+        }
+
+        @Override
+        public RainGraph<T>.DropVertex target() {
+            return this.target;
+        }
+
+    }
+
+
+    private final Rain<T> rain;
+    private final PList<DropEdge> edges;
+
+    private RainGraph(Rain<T> rain) {
+        this.rain = rain;
+        this.edges = collect(null, rain, new HashSet<>());
+    }
+
+    public static <T> RainGraph<T> of(Rain<T> rain) {
+        return new RainGraph<>(rain);
+    }
+
+    public Rain<T> rain() {
+        return rain;
     }
 
     @Override
-    public void traverse(BiConsumer<? super Vertex<T>, ? super Vertex<T>> consumer) {
-        // TODO Auto-generated method stub
-        
+    public void traverse(Consumer<? super DropEdge> consumer) {
+        edges.traverse(edge -> {
+            consumer.accept(edge);
+            return Promise.nil();
+        });
     }
 
+    private Collection<DropVertex> verticesMemo = null;
     @Override
-    public <R> R fold(R initial, BiFunction<Collection<? super R>, ? super Vertex<T>, ? super Vertex<T>> consumer) {
-        // TODO Auto-generated method stub
-        return null;
+    public Collection<DropVertex> vertices() {
+        if (verticesMemo == null) {
+            verticesMemo = new HashSet<>();
+            this.edges.foldr(null, (edge, acc) -> {
+                verticesMemo.add(edge.target());
+                return Promise.nil();
+            }).join();
+        }
+        return verticesMemo;
     }
 
+    private Collection<DropEdge> edgesMemo = null;
     @Override
-    public Collection<Vertex<T>> vertices() {
-        // TODO Auto-generated method stub
-        return null;
+    public Collection<DropEdge> edges() {
+        if (edgesMemo == null) {
+            edgesMemo = this.edges.collect().join();
+        }
+        return edgesMemo;
     }
 
-    @Override
-    public Collection<Edge<T, Vertex<T>>> edges() {
-        // TODO Auto-generated method stub
-        return null;
+    private PList<DropEdge> collect(DropVertex prev, Rain<T> rain, Set<T> visited) {
+        return rain.unfix().flatmap(drop -> {
+            if (visited.contains(drop.get())) {
+                return PList.of(new DropEdge(prev, new DropVertex(drop)));
+            }
+            visited.add(drop.get());
+            DropVertex vertex = new DropVertex(drop);
+            return PList.cons(new DropEdge(prev, vertex), collect(vertex, drop.next(), visited));
+        });
     }
 }

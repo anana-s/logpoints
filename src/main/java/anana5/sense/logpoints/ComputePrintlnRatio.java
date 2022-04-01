@@ -16,8 +16,8 @@ public class ComputePrintlnRatio {
         var graph = LogPoints.v().graph();
 
         // stats
-        Set<Vertex<Stmt>> seen = new HashSet<>();
-        PList<Tuple<Double, Double>> ratios = graph.fold(droplets -> {
+        Set<Box.Ref> seen = new HashSet<>();
+        PList<Tuple<Double, Double>> ratios = graph.rain().fold(droplets -> {
             return droplets.flatmap(droplet -> {
                 if (seen.contains(droplet.get())) {
                     return PList.cons(Tuple.of(.0, .0), PList.of());

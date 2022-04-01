@@ -12,11 +12,11 @@ import anana5.graph.Vertex;
 import soot.jimple.Stmt;
 
 public class DotPrinter implements AutoCloseable {
-    Map<Vertex<Stmt>, String> discovered;
+    Map<Box.Ref, String> discovered;
     PrintStream out;
-    Function<Vertex<Stmt>, String> formatter;
+    Function<Box.Ref, String> formatter;
 
-    DotPrinter(PrintStream out, Function<Vertex<Stmt>, String> formatter) {
+    DotPrinter(PrintStream out, Function<Box.Ref, String> formatter) {
         this.discovered = new HashMap<>();
         this.out = out;
         this.out.println("digraph {");
@@ -25,7 +25,7 @@ public class DotPrinter implements AutoCloseable {
         this.formatter = formatter;
     }
     
-    public String discover(Vertex<Stmt> vertex) {
+    public String discover(Box.Ref vertex) {
         if (vertex == null) {
             return "root";
         }
@@ -38,7 +38,7 @@ public class DotPrinter implements AutoCloseable {
         return id;
     }
 
-    public void print(Vertex<Stmt> from, Vertex<Stmt> to) {
+    public void print(Box.Ref from, Box.Ref to) {
         StringBuilder s = new StringBuilder("    ");
         s.append(discover(from));
         s.append(" -> ");

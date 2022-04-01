@@ -14,8 +14,8 @@ public class PrintNodes {
         LogPoints.v().configure(args);
         var graph = LogPoints.v().graph();
 
-        Set<Vertex<Stmt>> discovered = new HashSet<>();
-        var task = graph.traverse(($, vertex) -> {
+        Set<Box.Ref> discovered = new HashSet<>();
+        var task = graph.rain().traverse(($, vertex) -> {
             if (!discovered.contains(vertex)) {
                 discovered.add(vertex);
                 var sj = new StringJoiner("\t");

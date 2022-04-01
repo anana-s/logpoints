@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 
 import anana5.graph.rainfall.Drop;
 import anana5.graph.rainfall.Rain;
+import anana5.graph.rainfall.RainGraph;
 import anana5.util.Computation;
 import anana5.util.Knot;
 import anana5.util.PList;
@@ -201,8 +202,8 @@ public class LogPoints {
         return this;
     }
 
-    public Rain<Box.Ref> graph() {
-        return Rain.bind(build());
+    public RainGraph<Box.Ref> graph() {
+        return RainGraph.of(Rain.bind(build()));
     }
 
     private final Promise<Rain<Box.Ref>> build() {
