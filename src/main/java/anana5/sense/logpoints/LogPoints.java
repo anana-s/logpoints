@@ -249,7 +249,6 @@ public class LogPoints {
     }
 
     private final Map<SootMethod, Rain<Box.Ref>> memo1 = new HashMap<>();
-    private final Set<SootMethod> recur = new HashSet<>();
     private final Promise<Rain<Box.Ref>> build(Stmt invoker, SootMethod method, Path path) {
 
         var curr = path.push(invoker, method);
