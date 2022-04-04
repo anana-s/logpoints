@@ -3,20 +3,18 @@ package anana5.sense.logpoints;
 import java.util.HashMap;
 import java.util.StringJoiner;
 
-import anana5.graph.Vertex;
 import anana5.util.PList;
 import anana5.util.LList;
 import anana5.util.Promise;
-import soot.jimple.Stmt;
 
 public class PrintPaths {
     public static void main(String[] args) {
         LogPoints.v().configure(args);
 
-        var graph = LogPoints.v().graph();
+        var graph = LogPoints.v().build().join();
 
         var seen = new HashMap<Box.Ref, PList<LList<Box.Ref>>>();
-        PList<LList<Box.Ref>> paths = graph.rain().fold(droplets -> droplets.flatmap(droplet -> {
+        PList<LList<Box.Ref>> paths = graph.fold(droplets -> droplets.flatmap(droplet -> {
             var vertex = droplet.get();
 
             if (seen.containsKey(vertex)) {
