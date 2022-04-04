@@ -12,10 +12,10 @@ public class PrintNodes {
 
     public static void main(String[] args) {
         LogPoints.v().configure(args);
-        var graph = LogPoints.v().graph();
+        var graph = LogPoints.v().build().join();
 
         Set<Box.Ref> discovered = new HashSet<>();
-        var task = graph.rain().traverse(($, vertex) -> {
+        var task = graph.traverse(($, vertex) -> {
             if (!discovered.contains(vertex)) {
                 discovered.add(vertex);
                 var sj = new StringJoiner("\t");

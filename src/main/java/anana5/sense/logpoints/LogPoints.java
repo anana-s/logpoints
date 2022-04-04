@@ -16,6 +16,9 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import anana5.graph.Edge;
+import anana5.graph.Graph;
+import anana5.graph.Vertex;
 import anana5.graph.rainfall.Drop;
 import anana5.graph.rainfall.Rain;
 import anana5.graph.rainfall.RainGraph;
@@ -45,7 +48,6 @@ public class LogPoints {
     private static Logger logger = LoggerFactory.getLogger(LogPoints.class);
     private static LogPoints instance = null;
     private static Transform cpf = PackManager.v().getPack("jop").get("jop.cpf");
-    private static boolean trace = false;
     public static LogPoints v() {
         if (instance == null) {
             instance = new LogPoints();
@@ -62,7 +64,6 @@ public class LogPoints {
     }
 
     public LogPoints configure(Namespace ns) {
-        this.trace(ns.getBoolean("trace"));
         this.prepend(ns.getBoolean("prepend"));
         this.classpath(ns.getString("classpath"));
         this.modulepath(ns.getString("modulepath"));
@@ -169,11 +170,6 @@ public class LogPoints {
         return this;
     }
 
-    public LogPoints trace(boolean trace) {
-        LogPoints.trace = trace;
-        return this;
-    }
-
     private LogPoints() {
         // make sure to configure soot
         this.configure();
@@ -202,11 +198,11 @@ public class LogPoints {
         return this;
     }
 
-    public RainGraph<Box.Ref> graph() {
+    public Graph<Box.Ref, Vertex<Box.Ref>, Edge<Box.Ref, Vertex<Box.Ref>>> graph() {
         return RainGraph.of(Rain.bind(build()));
     }
 
-    private final Promise<Rain<Box.Ref>> build() {
+    protected final Promise<Rain<Box.Ref>> build() {
         LocalDateTime start = LocalDateTime.now();
         logger.debug("started at {}", start);
         Runnable exitHook = () -> {
@@ -248,6 +244,12 @@ public class LogPoints {
         return Promise.just(process(mr));
     }
 
+    private static final Rain<Box.Ref> fixture(Path path, SootMethod method) {
+        Stmt stmt = new JReturnVoidStmt();
+        stmt.addTag(new SourceMapTag(String.format("%s.%s", method.getDeclaringClass().getName(), method.getName()), 0, 0));
+        return Rain.of(Drop.of(path.box().of(true, stmt), Rain.of()));
+    }
+
     private final Map<SootMethod, Rain<Box.Ref>> memo1 = new HashMap<>();
     private final Promise<Rain<Box.Ref>> build(Stmt invoker, SootMethod method, Path path) {
 
@@ -267,21 +269,21 @@ public class LogPoints {
 
         if (method.isPhantom()){
             logger.trace("{} skipped due to being phantom", format(path, method));
-            var rain = Rain.of(Drop.of(box.of(true, new JReturnVoidStmt()), Rain.of()));
+            var rain = fixture(curr, method);
             memo1.put(method, rain);
             return Promise.just(rain);
         }
 
         if (!method.isConcrete()) {
             logger.trace("{} skipped due to not being concrete", format(path, method));
-            var rain = Rain.of(Drop.of(box.of(true, new JReturnVoidStmt()), Rain.of()));
+            var rain = fixture(curr, method);
             memo1.put(method, rain);
             return Promise.just(rain);
         }
 
         if (method.getDeclaringClass().isLibraryClass()) {
             logger.trace("{} skipped due to being library method", format(path, method));
-            var rain = Rain.of(Drop.of(box.of(true, new JReturnVoidStmt()), Rain.of()));
+            var rain = fixture(curr, method);
             memo1.put(method, rain);
             return Promise.just(rain);
         }
@@ -351,6 +353,7 @@ public class LogPoints {
 
             if (isReturn(stmt)) {
                 logger.trace("{} returned", format(path, method, stmt), code);
+                stmt.addTag(new SourceMapTag(sourceName, stmt.getJavaSourceStartLineNumber(), stmt.getJavaSourceStartColumnNumber()));
                 final var rain = Rain.of(Drop.of(path.box().of(stmt), Rain.of()));
                 memo1.put(stmt, rain);
                 return Promise.just(rain);

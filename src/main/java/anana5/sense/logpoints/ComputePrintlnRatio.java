@@ -13,11 +13,11 @@ public class ComputePrintlnRatio {
 
     public static void main(String[] args) {
         LogPoints.v().configure(args);
-        var graph = LogPoints.v().graph();
+        var graph = LogPoints.v().build().join();
 
         // stats
         Set<Box.Ref> seen = new HashSet<>();
-        PList<Tuple<Double, Double>> ratios = graph.rain().fold(droplets -> {
+        PList<Tuple<Double, Double>> ratios = graph.fold(droplets -> {
             return droplets.flatmap(droplet -> {
                 if (seen.contains(droplet.get())) {
                     return PList.cons(Tuple.of(.0, .0), PList.of());

@@ -2,8 +2,9 @@ package anana5.graph.rainfall;
 
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 
 import anana5.graph.Edge;
 import anana5.graph.Graph;
@@ -11,9 +12,9 @@ import anana5.graph.Vertex;
 import anana5.util.PList;
 import anana5.util.Promise;
 
-public class RainGraph<T> implements Graph<T, RainGraph<T>.DropVertex, RainGraph<T>.DropEdge> {
+public class RainGraph<T> implements Graph<T, Vertex<T>, Edge<T, Vertex<T>>> {
 
-    class DropVertex implements Vertex<T> {
+    public class DropVertex implements Vertex<T> {
         private Drop<T, Rain<T>> drop;
 
         private DropVertex(Drop<T, Rain<T>> drop) {
@@ -30,9 +31,19 @@ public class RainGraph<T> implements Graph<T, RainGraph<T>.DropVertex, RainGraph
             return drop.next().unfix().map(DropVertex::new).collect().join();
         }
 
+        @Override
+        public boolean equals(Object obj) {
+            return obj instanceof RainGraph<?>.DropVertex && ((RainGraph<?>.DropVertex) obj).drop.equals(drop);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(drop);
+        }
+
     }
 
-    class DropEdge implements Edge<T> {
+    public class DropEdge implements Edge<T, Vertex<T>> {
         private DropVertex source, target;
 
         private DropEdge(DropVertex source, DropVertex target) {
@@ -50,11 +61,21 @@ public class RainGraph<T> implements Graph<T, RainGraph<T>.DropVertex, RainGraph
             return this.target;
         }
 
+        @Override
+        public boolean equals(Object obj) {
+            return obj instanceof RainGraph<?>.DropEdge && ((RainGraph<?>.DropEdge) obj).source.equals(source) && ((RainGraph<?>.DropEdge) obj).target.equals(target);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(source, target);
+        }
+
     }
 
 
     private final Rain<T> rain;
-    private final PList<DropEdge> edges;
+    private final PList<Edge<T, Vertex<T>>> edges;
 
     private RainGraph(Rain<T> rain) {
         this.rain = rain;
@@ -70,16 +91,16 @@ public class RainGraph<T> implements Graph<T, RainGraph<T>.DropVertex, RainGraph
     }
 
     @Override
-    public void traverse(Consumer<? super DropEdge> consumer) {
+    public void traverse(BiConsumer<? super Vertex<T>, ? super Vertex<T>> consumer) {
         edges.traverse(edge -> {
-            consumer.accept(edge);
+            consumer.accept(edge.source(), edge.target());
             return Promise.nil();
-        });
+        }).join();
     }
 
-    private Collection<DropVertex> verticesMemo = null;
+    private Collection<Vertex<T>> verticesMemo = null;
     @Override
-    public Collection<DropVertex> vertices() {
+    public Collection<Vertex<T>> vertices() {
         if (verticesMemo == null) {
             verticesMemo = new HashSet<>();
             this.edges.foldr(null, (edge, acc) -> {
@@ -90,16 +111,16 @@ public class RainGraph<T> implements Graph<T, RainGraph<T>.DropVertex, RainGraph
         return verticesMemo;
     }
 
-    private Collection<DropEdge> edgesMemo = null;
+    private Collection<Edge<T, Vertex<T>>> edgesMemo = null;
     @Override
-    public Collection<DropEdge> edges() {
+    public Collection<Edge<T, Vertex<T>>> edges() {
         if (edgesMemo == null) {
             edgesMemo = this.edges.collect().join();
         }
         return edgesMemo;
     }
 
-    private PList<DropEdge> collect(DropVertex prev, Rain<T> rain, Set<T> visited) {
+    private PList<Edge<T, Vertex<T>>> collect(DropVertex prev, Rain<T> rain, Set<T> visited) {
         return rain.unfix().flatmap(drop -> {
             if (visited.contains(drop.get())) {
                 return PList.of(new DropEdge(prev, new DropVertex(drop)));

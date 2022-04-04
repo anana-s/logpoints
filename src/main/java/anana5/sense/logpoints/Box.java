@@ -1,19 +1,26 @@
 package anana5.sense.logpoints;
 
+import java.io.Serializable;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.ProviderException;
+import java.util.Arrays;
 import java.util.Objects;
 
 import org.apache.commons.lang3.ArrayUtils;
 
-import anana5.graph.Vertex;
 import soot.jimple.Stmt;
 
-public class Box {
+public class Box implements Serializable {
     private static int probe;
     private final byte[] hash;
 
+    private static byte[] probe() {
+        return ByteBuffer.allocate(4).putInt(probe++).array();
+    }
+
     public Box() {
-        this.hash = ByteBuffer.allocate(4).putInt(probe++).array();
+        this.hash = probe();
     }
 
     public Ref of(Stmt value) {
@@ -43,7 +50,7 @@ public class Box {
 
         private Ref(boolean sentinel) {
             this.sentinel = sentinel;
-            this.hash = ByteBuffer.allocate(4).putInt(probe++).array();
+            this.hash = probe();
         }
 
         public Box box() {
@@ -58,29 +65,14 @@ public class Box {
             return ArrayUtils.addAll(Box.this.hash, this.hash);
         }
 
-        public abstract Stmt value();
+        protected abstract Stmt value();
 
         @Override
         public String toString() {
-            var v = value();
             if (sentinel()) {
-                return String.format("sentinel[%s]@[%d]", v, v.hashCode());
+                return String.format("sentinel %s", format(value()));
             }
-            return String.format("[%s]@[%d]", v, v.hashCode());
-        }
-    }
-
-    private class SimpleRef extends Ref {
-        private final Stmt value;
-
-        private SimpleRef(Stmt value, boolean sentinel) {
-            super(sentinel);
-            this.value = value;
-        }
-
-        @Override
-        public Stmt value() {
-            return value;
+            return format(value());
         }
 
         @Override
@@ -91,16 +83,45 @@ public class Box {
             if (obj == this) {
                 return true;
             }
-            if (!(obj instanceof Box.SimpleRef)) {
+            if (!(obj instanceof Box.Ref)) {
                 return false;
             }
-            Box.SimpleRef other = (Box.SimpleRef) obj;
-            return Objects.equals(box(), other.box()) && Objects.equals(value, other.value);
+            Box.Ref other = (Box.Ref) obj;
+            return Arrays.equals(hash(), other.hash());
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(box(), value);
+            return Arrays.hashCode(hash());
+        }
+    }
+
+    protected static String format(Stmt stmt) {
+        if (stmt == null || !stmt.containsInvokeExpr()) {
+            return stmt.toString();
+        }
+        var expr = stmt.getInvokeExpr();
+        var mref = expr.getMethodRef();
+        return mref.getName() + expr.getArgs().toString() + stmt.getTag("SourceMapTag").toString();
+
+    }
+
+    private class SimpleRef extends Ref {
+        private final Stmt value;
+
+        private SimpleRef(Stmt value, boolean sentinel) {
+            super(sentinel);
+
+            if (!value.hasTag("SourceMapTag")) {
+                throw new IllegalArgumentException("value must have SourceMapTag");
+            }
+
+            this.value = value;
+        }
+
+        @Override
+        public Stmt value() {
+            return value;
         }
     }
 
@@ -115,26 +136,6 @@ public class Box {
         @Override
         public Stmt value() {
             return ref.value();
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            if (obj == null) {
-                return false;
-            }
-            if (obj == this) {
-                return true;
-            }
-            if (!(obj instanceof Box.CopyRef)) {
-                return false;
-            }
-            Box.CopyRef other = (Box.CopyRef) obj;
-            return Objects.equals(box(), other.box()) && Objects.equals(ref, other.ref);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(box(), ref);
         }
     }
 }

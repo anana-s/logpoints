@@ -4,25 +4,19 @@ import java.io.PrintStream;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.function.Function;
 
 import org.apache.commons.text.StringEscapeUtils;
 
-import anana5.graph.Vertex;
-import soot.jimple.Stmt;
-
 public class DotPrinter implements AutoCloseable {
-    Map<Box.Ref, String> discovered;
-    PrintStream out;
-    Function<Box.Ref, String> formatter;
+    private final Map<Box.Ref, String> discovered;
+    private final PrintStream out;
 
-    DotPrinter(PrintStream out, Function<Box.Ref, String> formatter) {
+    DotPrinter(PrintStream out) {
         this.discovered = new HashMap<>();
         this.out = out;
         this.out.println("digraph {");
         this.out.println("    edge [style=bold]");
         this.out.println("    node [shape=box, style=\"rounded,bold\", fontname=\"helvetica\"]");
-        this.formatter = formatter;
     }
     
     public String discover(Box.Ref vertex) {
@@ -34,7 +28,7 @@ public class DotPrinter implements AutoCloseable {
         }
         String id = "\"" + new String(Base64.getEncoder().encode(vertex.hash())) + "\"";
         discovered.put(vertex, id);
-        out.println("    " + String.format("%s [label=\"%s\"]", id, StringEscapeUtils.escapeJava(formatter.apply(vertex))));
+        out.println("    " + String.format("%s [label=\"%s\"]", id, StringEscapeUtils.escapeJava(vertex.toString())));
         return id;
     }
 
