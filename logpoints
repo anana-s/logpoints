@@ -2,9 +2,6 @@
 
 set -e
 
-TARGET="${LOGPOITNS_HOME:-"$(dirname "$0")"}"
-VERSION="$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout -B)"
-LIB="${LIB:-"$TARGET/lib"}"
-JAR="${JAR:-"$LIB/logpoints-$VERSION-jar-with-dependencies.jar"}"
+LOGPOINTS_HOME="${LOGPOINTS_HOME:-"$(dirname "$0")/.."}"
 
-java -Dorg.slf4j.simpleLogger.defaultLogLevel=trace -XX:+UseSerialGC -cp "$JAR" anana5.sense.logpoints.PrintGraph "$@"
+java -Dorg.slf4j.simpleLogger.defaultLogLevel=trace -XX:+UseSerialGC -cp "$LOGPOINTS_HOME/lib/*" anana5.sense.logpoints.PrintGraph "$@"

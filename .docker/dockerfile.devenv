@@ -1,9 +1,0 @@
-FROM openjdk:11
-
-RUN useradd -s /bin/bash -m dev \
-    && groupadd docker \
-    && usermod -aG docker dev
-
-RUN apt update && apt install -y maven
-
-USER dev
