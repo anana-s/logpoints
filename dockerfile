@@ -2,12 +2,11 @@ FROM openjdk:11 AS base
 RUN apt-get update && apt-get install -y maven
 
 FROM base AS development
-RUN useradd -s /bin/bash -m dev \
-    && groupadd docker \
-    && usermod -aG docker dev
-RUN apt-get install -y git
-ENV LIB ./target
+RUN apt-get install -y git docker sudo curl vim
+RUN groupadd docker && useradd -m -s /bin/bash -G docker,sudo dev
+RUN echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 USER dev
+ENV LIB ./target
 
 FROM base AS build
 WORKDIR /logpoints
