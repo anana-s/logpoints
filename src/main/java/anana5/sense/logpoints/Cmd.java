@@ -43,7 +43,7 @@ public class Cmd {
             .setDefault(System.out);
 
         parser.addArgument("--trace")
-            .setDefault(false)
+            .setDefault(true)
             .action(Arguments.storeTrue());
 
         parser.addArgument("classes").nargs("+");

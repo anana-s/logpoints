@@ -55,6 +55,8 @@ public class LogPoints {
         return instance;
     }
 
+    private boolean trace = false;
+
     private List<Pattern> tags = new ArrayList<>();
 
     private CallGraph cg;
@@ -70,6 +72,7 @@ public class LogPoints {
         this.include(ns.<String>getList("include"));
         this.exclude(ns.<String>getList("exclude"));
         this.classes(ns.<String>getList("classes"));
+        this.trace(ns.getBoolean("trace"));
         for (String tag : ns.<String>getList("tag")) {
             this.tag(tag);
         }
@@ -136,6 +139,11 @@ public class LogPoints {
         Options.v().setPhaseOption("jj.ne", "enabled:true");
         Options.v().setPhaseOption("jj.uce", "enabled:true");
 
+        return this;
+    }
+
+    public LogPoints trace(boolean trace) {
+        this.trace = trace || logger.isTraceEnabled();
         return this;
     }
 
@@ -254,11 +262,10 @@ public class LogPoints {
     private final Promise<Rain<Box.Ref>> build(Stmt invoker, SootMethod method, Path path) {
 
         var curr = path.push(invoker, method);
-        var box = curr.box();
 
         if (memo1.containsKey(method)) {
             logger.trace("{} loaded from cache", format(path, method));
-            return Promise.just(memo1.get(method).map(v -> box.of(v)));
+            return Promise.just(memo1.get(method));
         }
 
         if (path.contains(invoker, method)) {
@@ -292,11 +299,7 @@ public class LogPoints {
         var builder = new CFGFactory(curr, method);
         return builder.build().then(rain -> {
             logger.trace("{} done loading", format(path, method));
-
-            // trade some performance for better memory usage and readability of the traces
-            rain = Rain.bind(rain.resolve());
             memo1.put(method, rain);
-
             return Promise.just(rain);
         });
     }
@@ -324,7 +327,12 @@ public class LogPoints {
         }
 
         public final Promise<Rain<Box.Ref>> build() {
-            return build(PList.from(cfg.getHeads()).map(unit -> (Stmt)unit));
+            return build(PList.from(cfg.getHeads()).map(unit -> (Stmt)unit)).then(rain -> {
+                if (trace) {
+                    return rain.resolve();
+                }
+                return Promise.just(rain);
+            });
         }
 
         private final Promise<Rain<Box.Ref>> build(PList<Stmt> stmts) {
@@ -397,11 +405,15 @@ public class LogPoints {
 
             return methods.empty().<Rain<Box.Ref>>then(noMethods -> {
                 if (noMethods) {
-                    logger.trace("{} expands to nothing", format(path, method, stmt));
+                    logger.warn("{} expands to nothing", format(path, method, stmt));
                     return build(next);
                 }
 
                 return LogPoints.this.build(stmt, methods, path).then(subrain -> {
+
+                    Map<Box.Ref, Box.Ref> memo2 = new HashMap<>();
+                    subrain = subrain.map(ref -> memo2.computeIfAbsent(ref, r -> path.box().of(r)));
+
                     Rain<Box.Ref> a, b;
                     a = Rain.bind(Promise.lazy().then(n -> build(next)));
                     b = Rain.bind(Promise.lazy().then(n -> build(next)));
@@ -414,18 +426,18 @@ public class LogPoints {
                             return a;
                         }
                         return Rain.of(Drop.of(drop_.get(), drop_.next().<Rain<Box.Ref>>fold(drops -> Rain.merge(drops.map(drop -> {
-                            var box = drop.get();
-                            var s = box.value();
+                            var ref = drop.get();
+                            var s = ref.value();
 
-                            if (done.containsKey(box)) {
-                                return done.get(box);
+                            if (done.containsKey(ref)) {
+                                return done.get(ref);
                             } else if (isReturn(s)) {
                                 logger.trace("{} returning from [{}]@[{}] to {} [guarded]", format(path, method, stmt), s, s.hashCode(), code);
-                                done.put(box, b);
+                                done.put(ref, b);
                                 return b;
                             } else {
                                 var out = Rain.of(drop);
-                                done.put(box, out);
+                                done.put(ref, out);
                                 return out;
                             }
                         })))));
