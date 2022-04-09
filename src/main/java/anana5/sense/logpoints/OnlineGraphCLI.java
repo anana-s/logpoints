@@ -1,6 +1,5 @@
 package anana5.sense.logpoints;
 
-import java.io.PrintStream;
 import java.util.ArrayList;
 
 import net.sourceforge.argparse4j.ArgumentParsers;

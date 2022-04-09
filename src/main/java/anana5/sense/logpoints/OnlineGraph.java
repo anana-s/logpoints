@@ -2,12 +2,8 @@ package anana5.sense.logpoints;
 
 import java.io.EOFException;
 import java.io.IOException;
-import java.io.InvalidClassException;
-import java.io.NotSerializableException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.OptionalDataException;
-import java.io.StreamCorruptedException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.Callable;
@@ -21,7 +17,6 @@ import org.slf4j.LoggerFactory;
 
 import anana5.util.Promise;
 import net.sourceforge.argparse4j.inf.Namespace;
-import polyglot.lex.EOF;
 
 public class OnlineGraph implements Callable<Void>, AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(OnlineGraph.class);

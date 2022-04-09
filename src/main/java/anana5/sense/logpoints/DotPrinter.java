@@ -8,7 +8,7 @@ import java.util.Map;
 import org.apache.commons.text.StringEscapeUtils;
 
 public class DotPrinter implements AutoCloseable {
-    private final Map<Box.SerialRef, String> discovered;
+    private final Map<SerialRef, String> discovered;
     private final PrintStream out;
 
     DotPrinter(PrintStream out) {
@@ -19,7 +19,7 @@ public class DotPrinter implements AutoCloseable {
         this.out.println("    node [shape=box, style=\"rounded,bold\", fontname=\"helvetica\"]");
     }
     
-    public String discover(Box.SerialRef vertex) {
+    public String discover(SerialRef vertex) {
         if (vertex == null) {
             return "root";
         }
@@ -32,7 +32,7 @@ public class DotPrinter implements AutoCloseable {
         return id;
     }
 
-    public void print(Box.SerialRef from, Box.SerialRef to) {
+    public void print(SerialRef from, SerialRef to) {
         StringBuilder s = new StringBuilder("    ");
         s.append(discover(from));
         s.append(" -> ");

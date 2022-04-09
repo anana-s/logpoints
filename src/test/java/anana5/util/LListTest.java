@@ -17,7 +17,7 @@ class LListTest {
 
     @Test
     void foldr() {
-        var actual = PList.bind(a.foldr(PList.of(), (a, b) -> Promise.just(b.push(a)))).collect().join();
+        var actual = PList.bind(a.foldr(PList.of(), (a, b) -> Promise.just(a.push(b)))).collect().join();
         assertEquals(Arrays.asList(3, 2, 1), actual);
     }
 

@@ -10,17 +10,13 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.BiConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import org.apache.commons.lang3.NotImplementedException;
-
 import anana5.graph.Edge;
 import anana5.graph.Graph;
 import anana5.graph.Vertex;
-import anana5.sense.logpoints.Box.SerialRef;
 import anana5.util.Tuple;
 
 public class Client implements Graph<SerialRef, Client.V, Client.E>, AutoCloseable {
@@ -151,8 +147,8 @@ public class Client implements Graph<SerialRef, Client.V, Client.E>, AutoCloseab
         }
     }
 
-    public class E extends Tuple<Box.SerialRef, Box.SerialRef> implements Edge<Box.SerialRef, V> {
-        private E(Box.SerialRef source, Box.SerialRef target) {
+    public class E extends Tuple<SerialRef, SerialRef> implements Edge<SerialRef, V> {
+        private E(SerialRef source, SerialRef target) {
             super(source, target);
         }
 

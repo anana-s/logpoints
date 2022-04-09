@@ -2,7 +2,6 @@ package anana5.util;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -107,8 +106,8 @@ public class PList<T> implements Iterable<T> {
         }).map($ -> collection);
     }
 
-    public <R> Promise<R> foldr(R r, BiFunction<T, R, Promise<R>> func) {
-        return unfix.then(listF -> listF.match(() -> Promise.just(r), (t, next) -> func.apply(t, r).then(s -> next.foldr(s, func))));
+    public <R> Promise<R> foldr(R r, BiFunction<R, T, Promise<R>> func) {
+        return unfix.then(listF -> listF.match(() -> Promise.just(r), (t, next) -> func.apply(r, t).then(s -> next.foldr(s, func))));
     }
 
     public <R> Promise<R> foldl(R r, BiFunction<T, R, Promise<R>> func) {

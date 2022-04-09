@@ -29,7 +29,7 @@ public class Info {
                 var ecount = client.send(graph -> {
                     return graph.join().edges().size();
                 });
-                System.out.println(client.vertices() + " " + client.edges().size());
+                System.out.println(vcount + " " + ecount);
             }
         } catch (Exception e) {
             log.error("{}", e.getMessage());

@@ -1,16 +1,11 @@
 package anana5.sense.logpoints;
 
-import java.util.UUID;
-
-import anana5.graph.Vertex;
-import soot.jimple.Stmt;
-
 public class StmtVertexFormatter {
-    static String format(Box.Ref vertex) {
-        var stmt = vertex.value();
+    static String format(Box.Ref ref) {
+        var stmt = ref.get();
 
         if (stmt == null || !stmt.containsInvokeExpr()) {
-            return vertex.toString();
+            return ref.toString();
         }
         var expr = stmt.getInvokeExpr();
         var mref = expr.getMethodRef();

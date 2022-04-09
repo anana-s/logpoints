@@ -59,7 +59,7 @@ public class RainTest {
 
     @Test
     void fold() {
-        Integer actual = graph.get().<Promise<Integer>>fold(drops -> drops.foldr(0, (drop, acc) -> drop.next().map(n -> acc + n + drop.get()))).join();
+        Integer actual = graph.get().<Promise<Integer>>fold(drops -> drops.foldr(0, (acc, drop) -> drop.next().map(n -> acc + n + drop.get()))).join();
         assertEquals(24, actual);
     }
 

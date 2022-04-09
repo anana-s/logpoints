@@ -12,7 +12,6 @@ import anana5.graph.Edge;
 import anana5.graph.Graph;
 import anana5.graph.Vertex;
 import anana5.graph.rainfall.RainGraph;
-import anana5.sense.logpoints.Box.SerialRef;
 import anana5.util.Tuple;
 
 public class BoxGraph implements Graph<SerialRef, BoxGraph.V, BoxGraph.E> {
@@ -51,7 +50,7 @@ public class BoxGraph implements Graph<SerialRef, BoxGraph.V, BoxGraph.E> {
     }
 
     private V vertex(RainGraph<Box.Ref>.DropVertex dv) {
-        var serial = dv.value().serialize();
+        var serial = new SerialRef(dv.value());
         memo.put(serial, dv);
         return vertex(serial);
     }

@@ -119,7 +119,7 @@ public class Promise<T> implements Computation<T> {
         return this.resolved;
     }
 
-    public T join() {
+    public synchronized T join() {
         Computation.super.run(this::resolve);
         return value;
     }

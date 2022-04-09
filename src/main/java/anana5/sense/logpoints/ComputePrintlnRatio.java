@@ -3,11 +3,9 @@ package anana5.sense.logpoints;
 import java.util.HashSet;
 import java.util.Set;
 
-import anana5.graph.Vertex;
 import anana5.util.PList;
 import anana5.util.Promise;
 import anana5.util.Tuple;
-import soot.jimple.Stmt;
 
 public class ComputePrintlnRatio {
 
@@ -24,7 +22,7 @@ public class ComputePrintlnRatio {
                 }
                 seen.add(droplet.get());
                 return PList.bind(droplet.next().empty().map(isEmpty -> {
-                    if (droplet.get().value().getInvokeExpr().getMethodRef().getName().equals("println")) {
+                    if (droplet.get().get().getInvokeExpr().getMethodRef().getName().equals("println")) {
                         if (isEmpty) {
                             return PList.cons(Tuple.of(1., 1.), PList.of());
                         } else {

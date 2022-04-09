@@ -4,9 +4,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.StringJoiner;
 
-import anana5.graph.Vertex;
 import anana5.util.Promise;
-import soot.jimple.Stmt;
 
 public class PrintNodes {
 
@@ -15,13 +13,13 @@ public class PrintNodes {
         var graph = LogPoints.v().build().join();
 
         Set<Box.Ref> discovered = new HashSet<>();
-        var task = graph.traverse(($, vertex) -> {
-            if (!discovered.contains(vertex)) {
-                discovered.add(vertex);
+        var task = graph.traverse(($, ref) -> {
+            if (!discovered.contains(ref)) {
+                discovered.add(ref);
                 var sj = new StringJoiner("\t");
-                sj.add(String.format("nx%08x", vertex.hashCode()));
-                sj.add(StmtVertexFormatter.format(vertex));
-                sj.add(vertex.value().getTag("SourceMapTag").toString());
+                sj.add(String.format("nx%08x", ref.hashCode()));
+                sj.add(StmtVertexFormatter.format(ref));
+                sj.add(ref.get().getTag("SourceMapTag").toString());
                 System.out.println(sj.toString());
             }
             return Promise.lazy();

@@ -3,7 +3,6 @@ package anana5.sense.logpoints;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.Objects;
 
 import org.apache.commons.lang3.ArrayUtils;
 
@@ -25,29 +24,24 @@ public class Box implements Serializable {
         if (value == null) {
             throw new NullPointerException();
         }
-        return new SimpleRef(value, false);
-    }
-
-    public Ref of(boolean sentinel, Stmt value) {
-        if (sentinel == false && value == null) {
-            throw new NullPointerException();
-        }
-        return new SimpleRef(value, sentinel);
+        return new Ref(value, false);
     }
 
     public Ref of(Ref other) {
-        if (other.box() == this) {
-            return other;
+        if (this.equals(other.box())) {
+            return new Ref(other.get(), true);
         }
-        return new CopyRef(other);
+        return new Ref(other.get(), other.recursive);
     }
 
-    public abstract class Ref {
-        private final boolean sentinel;
+    public class Ref implements anana5.util.Ref<Stmt> {
         private final byte[] hash;
+        private final Stmt stmt;
+        private final boolean recursive;
 
-        private Ref(boolean sentinel) {
-            this.sentinel = sentinel;
+        private Ref(Stmt stmt, boolean recursive) {
+            this.stmt = stmt;
+            this.recursive = recursive;
             this.hash = probe();
         }
 
@@ -55,26 +49,23 @@ public class Box implements Serializable {
             return Box.this;
         }
 
-        public boolean sentinel() {
-            return sentinel;
-        }
-
+        @Override
         public byte[] hash() {
             return ArrayUtils.addAll(Box.this.hash, this.hash);
         }
 
-        protected abstract Stmt value();
+        @Override
+        public Stmt get() {
+            return stmt;
+        }
 
-        public SerialRef serialize() {
-            return new SerialRef(hash(), toString());
+        public boolean recursive() {
+            return recursive;
         }
 
         @Override
         public String toString() {
-            if (sentinel()) {
-                return String.format("sentinel %s", format(value()));
-            }
-            return format(value());
+            return format(stmt);
         }
 
         @Override
@@ -106,77 +97,5 @@ public class Box implements Serializable {
         var mref = expr.getMethodRef();
         return mref.getName() + expr.getArgs().toString() + stmt.getTag("SourceMapTag").toString();
 
-    }
-
-    private class SimpleRef extends Ref {
-        private final Stmt value;
-
-        private SimpleRef(Stmt value, boolean sentinel) {
-            super(sentinel);
-
-            if (!value.hasTag("SourceMapTag")) {
-                throw new IllegalArgumentException("value must have SourceMapTag");
-            }
-
-            this.value = value;
-        }
-
-        @Override
-        public Stmt value() {
-            return value;
-        }
-    }
-
-    public class SerialRef implements Serializable {
-        private final byte[] hash;
-        private final String value;
-
-        private SerialRef(byte[] hash, String value) {
-            this.hash = hash;
-            this.value = value;
-        }
-
-        public byte[] hash() {
-            return hash;
-        }
-
-        @Override
-        public String toString() {
-            return value;
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            if (obj == null) {
-                return false;
-            }
-            if (obj == this) {
-                return true;
-            }
-            if (obj.getClass() != this.getClass()) {
-                return false;
-            }
-            SerialRef other = (SerialRef) obj;
-            return Arrays.equals(hash, other.hash);
-        }
-
-        @Override
-        public int hashCode() {
-            return Arrays.hashCode(hash);
-        }
-    }
-
-    private class CopyRef extends Ref {
-        private final Ref ref;
-
-        private CopyRef(Ref ref) {
-            super(ref.sentinel());
-            this.ref = ref;
-        }
-
-        @Override
-        public Stmt value() {
-            return ref.value();
-        }
     }
 }
