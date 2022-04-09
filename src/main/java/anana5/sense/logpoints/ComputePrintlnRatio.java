@@ -12,7 +12,7 @@ import soot.jimple.Stmt;
 public class ComputePrintlnRatio {
 
     public static void main(String[] args) {
-        LogPoints.v().configure(args);
+        OnlineGraphCLI.parse(args);
         var graph = LogPoints.v().build().join();
 
         // stats

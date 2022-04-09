@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -24,6 +25,7 @@ import anana5.graph.rainfall.Rain;
 import anana5.graph.rainfall.RainGraph;
 import anana5.util.Computation;
 import anana5.util.Knot;
+import anana5.util.LList;
 import anana5.util.PList;
 import anana5.util.Promise;
 import net.sourceforge.argparse4j.inf.Namespace;
@@ -60,25 +62,6 @@ public class LogPoints {
     private List<Pattern> tags = new ArrayList<>();
 
     private CallGraph cg;
-
-    public LogPoints configure(String[] args) {
-        return configure(Cmd.parse(args));
-    }
-
-    public LogPoints configure(Namespace ns) {
-        this.prepend(ns.getBoolean("prepend"));
-        this.classpath(ns.getString("classpath"));
-        this.modulepath(ns.getString("modulepath"));
-        this.include(ns.<String>getList("include"));
-        this.exclude(ns.<String>getList("exclude"));
-        this.classes(ns.<String>getList("classes"));
-        this.trace(ns.getBoolean("trace"));
-        for (String tag : ns.<String>getList("tag")) {
-            this.tag(tag);
-        }
-
-        return this;
-    }
 
     public LogPoints configure() {
         try {
@@ -206,18 +189,17 @@ public class LogPoints {
         return this;
     }
 
-    public Graph<Box.Ref, Vertex<Box.Ref>, Edge<Box.Ref, Vertex<Box.Ref>>> graph() {
-        return RainGraph.of(Rain.bind(build()));
+    RainGraph<Box.Ref> graph = null;
+    public final synchronized RainGraph<Box.Ref> graph() {
+        if (graph == null) {
+            graph = RainGraph.of(Rain.bind(build()));
+        }
+        return graph;
     }
 
     protected final Promise<Rain<Box.Ref>> build() {
         LocalDateTime start = LocalDateTime.now();
-        logger.debug("started at {}", start);
-        Runnable exitHook = () -> {
-            LocalDateTime end = LocalDateTime.now();
-            logger.debug("done in {} iterations ({}) at {}", Computation.statistics.iterations(), Duration.between(end, start), end);
-        };
-        Runtime.getRuntime().addShutdownHook(new Thread(exitHook, "exit"));
+        logger.debug("started at {} with trace: {}", start, trace);
 
         if (this.cg == null) {
             Scene.v().loadNecessaryClasses();
@@ -225,8 +207,15 @@ public class LogPoints {
             this.cg = Scene.v().getCallGraph();
         }
 
-        return build(null, PList.from(Scene.v().getEntryPoints()), new Path()).then(rain -> {
+        return build(null, PList.from(Scene.v().getEntryPoints()), new Path())
+        .<Rain<Box.Ref>>then(rain -> {
             return Promise.just(rain.fold(drops -> Rain.fix(drops.filter(drop -> Promise.just(!isReturn(drop.get().value()))))));
+        })
+        .then(Rain::resolve)
+        .effect(rain -> {
+            LocalDateTime end = LocalDateTime.now();
+            logger.debug("done in {} iterations ({}) at {}", Computation.statistics.iterations(), Duration.between(end, start), end);
+            return Promise.<Void>nil();
         });
     }
 
@@ -351,7 +340,17 @@ public class LogPoints {
                 return Promise.just(Rain.of());
             }
 
+
+            if (isReturn(stmt)) {
+                logger.trace("{} returned", format(path, method, stmt));
+                stmt.addTag(new SourceMapTag(sourceName, stmt.getJavaSourceStartLineNumber(), stmt.getJavaSourceStartColumnNumber()));
+                final var rain = Rain.of(Drop.of(path.box().of(stmt), Rain.of()));
+                memo1.put(stmt, rain);
+                return Promise.just(rain);
+            }
+
             memo0.add(stmt);
+
 
             //TODO handle exceptional dests;
 
@@ -359,13 +358,6 @@ public class LogPoints {
             List<Integer> code = sucs.stream().map(Object::hashCode).collect(Collectors.toList());
             PList<Stmt> next = PList.from(sucs).map(unit -> (Stmt)unit);
 
-            if (isReturn(stmt)) {
-                logger.trace("{} returned", format(path, method, stmt), code);
-                stmt.addTag(new SourceMapTag(sourceName, stmt.getJavaSourceStartLineNumber(), stmt.getJavaSourceStartColumnNumber()));
-                final var rain = Rain.of(Drop.of(path.box().of(stmt), Rain.of()));
-                memo1.put(stmt, rain);
-                return Promise.just(rain);
-            }
 
             if (!stmt.containsInvokeExpr()) {
                 // skip this statement
@@ -393,6 +385,7 @@ public class LogPoints {
                     logger.trace("{} matched with tag {}, continuing with successors {}", format(path, method, stmt), pattern.toString(), code);
                     stmt.addTag(new SourceMapTag(this.sourceName, stmt.getJavaSourceStartLineNumber(), stmt.getJavaSourceStartColumnNumber()));
                     final var rain = Rain.of(Drop.of(path.box().of(stmt), Rain.bind(build(next))));
+                    memo0.remove(stmt);
                     memo1.put(stmt, rain);
                     return Promise.just(rain);
                 }

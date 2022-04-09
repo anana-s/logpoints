@@ -2,9 +2,7 @@ package anana5.graph;
 
 import java.util.Collection;
 
-import anana5.util.Value;
-
-public interface Vertex<T> {
+public interface Vertex<T, V extends Vertex<T, V>> {
     T value();
-    Collection<? extends Vertex<T>> next();
+    Collection<V> next();
 }

@@ -11,7 +11,7 @@ import soot.jimple.Stmt;
 public class PrintNodes {
 
     public static void main(String[] args) {
-        LogPoints.v().configure(args);
+        OnlineGraphCLI.parse(args);
         var graph = LogPoints.v().build().join();
 
         Set<Box.Ref> discovered = new HashSet<>();

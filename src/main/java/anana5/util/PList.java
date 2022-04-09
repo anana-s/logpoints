@@ -4,11 +4,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public class PList<T> {
+public class PList<T> implements Iterable<T> {
     final private Promise<ListF<T, PList<T>>> unfix;
 
     private PList(Promise<ListF<T, PList<T>>> promise) {
@@ -96,8 +98,8 @@ public class PList<T> {
     //     return fold(p -> p.then(listF -> listF.match(() -> Promise.lazy(), (t, f) -> folder.apply(Promise.lazy().then($ -> consumer.apply(t)), f))));
     // }
 
-    public Promise<Collection<T>> collect() {
-        Collection<T> collection = new ArrayList<>();
+    public Promise<List<T>> collect() {
+        List<T> collection = new ArrayList<>();
 
         return traverse(t -> {
             collection.add(t);
@@ -148,8 +150,8 @@ public class PList<T> {
         return PList.bind(out);
     }
 
-    public PList<T> resolve() {
-        return PList.bind(traverse(i -> Promise.lazy()).map($ -> this));
+    public Promise<LList<T>> resolve() {
+        return unfix.then(listF -> listF.match(() -> Promise.just(LList.of()), (t, next) -> next.resolve().then(l -> Promise.just(LList.cons(t, l)))));
     }
 
     public <R> Promise<R> match(Supplier<R> nil, BiFunction<T, PList<T>, R> cons) {
@@ -186,5 +188,34 @@ public class PList<T> {
                 return tail.contains(t);
             }
         }));
+    }
+
+    @Override
+    public Iterator<T> iterator() {
+        return new PListIterator<>(this);
+    }
+
+    private static class PListIterator<T> implements Iterator<T> {
+        private PList<T> cur;
+
+        private PListIterator(PList<T> plist) {
+            cur = plist;
+        }
+
+        @Override
+        public boolean hasNext() {
+            return !cur.empty().join();
+        }
+
+        @Override
+        public T next() {
+            return cur.unfix.join().match(() -> {
+                throw new NoSuchElementException();
+            }, (head, tail) -> {
+                cur = tail;
+                return head;
+            });
+        }
+
     }
 }

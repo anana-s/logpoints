@@ -65,6 +65,10 @@ public class Box implements Serializable {
 
         protected abstract Stmt value();
 
+        public SerialRef serialize() {
+            return new SerialRef(hash(), toString());
+        }
+
         @Override
         public String toString() {
             if (sentinel()) {
@@ -81,7 +85,7 @@ public class Box implements Serializable {
             if (obj == this) {
                 return true;
             }
-            if (!(obj instanceof Box.Ref)) {
+            if (obj.getClass() != Box.Ref.class) {
                 return false;
             }
             Box.Ref other = (Box.Ref) obj;
@@ -120,6 +124,45 @@ public class Box implements Serializable {
         @Override
         public Stmt value() {
             return value;
+        }
+    }
+
+    public class SerialRef implements Serializable {
+        private final byte[] hash;
+        private final String value;
+
+        private SerialRef(byte[] hash, String value) {
+            this.hash = hash;
+            this.value = value;
+        }
+
+        public byte[] hash() {
+            return hash;
+        }
+
+        @Override
+        public String toString() {
+            return value;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj == null) {
+                return false;
+            }
+            if (obj == this) {
+                return true;
+            }
+            if (obj.getClass() != this.getClass()) {
+                return false;
+            }
+            SerialRef other = (SerialRef) obj;
+            return Arrays.equals(hash, other.hash);
+        }
+
+        @Override
+        public int hashCode() {
+            return Arrays.hashCode(hash);
         }
     }
 

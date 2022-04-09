@@ -11,16 +11,15 @@ ENV LIB ./target
 FROM base AS build
 WORKDIR /logpoints
 COPY . .
-RUN mvn clean package
+RUN mvn clean package && mkdir lib && cp target/logpoints-*.jar target/dependency/*.jar lib/
 
 FROM openjdk:11
 WORKDIR /logpoints
-COPY --from=build /logpoints/target/logpoints-*.jar lib/
-COPY --from=build /logpoints/target/dependency/ lib/
+COPY --from=build /logpoints/lib/ lib/
 COPY --from=build /logpoints/logpoints bin/
 ENV PATH="/logpoints/bin:${PATH}"
 ENV LOGPOINTS_HOME="/logpoints"
-ENTRYPOINT logpoints
-
-
-
+ARG mx="4G"
+ENV LOGPOINTS_JVM_OPTS="-Xmx${mx}"
+EXPOSE 7000
+ENTRYPOINT ["logpoints", "serve"]

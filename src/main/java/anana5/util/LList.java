@@ -1,10 +1,15 @@
 package anana5.util;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-public class LList<T> {
+public class LList<T> implements Iterable<T> {
     private final ListF<T, LList<T>> unfix;
     private final int length;
 
@@ -34,6 +39,10 @@ public class LList<T> {
             llist = LList.cons(ts[i], llist);
         }
         return llist;
+    }
+
+    public static <T> LList<T> from(Iterable<T> ts) {
+        return PList.from(ts).resolve().join();
     }
 
     public static <T> LList<T> nil() {
@@ -87,5 +96,41 @@ public class LList<T> {
 
     public <R> LList<R> map(Function<T, R> func) {
         return foldl(LList.<R>nil(), (l, t) -> LList.cons(func.apply(t), l));
+    }
+
+    @Override
+    public Iterator<T> iterator() {
+        return new LListIterator<>(this);
+    }
+
+    private static class LListIterator<T> implements Iterator<T> {
+        private LList<T> cur;
+        private LListIterator(LList<T> list) {
+            cur = list;
+        }
+
+        @Override
+        public boolean hasNext() {
+            return !cur.empty();
+        }
+
+        @Override
+        public T next() {
+            return cur.unfix.match(() -> {
+                throw new NoSuchElementException();
+            }, (t, f) -> {
+                cur = f;
+                return t;
+            });
+        }
+
+    }
+
+    public List<? extends T> collect() {
+        List<T> list = new ArrayList<>();
+        for (T t : this) {
+            list.add(t);
+        }
+        return list;
     }
 }

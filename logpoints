@@ -1,7 +1,31 @@
-#!/bin/sh
+#!/bin/bash
 
 set -e
 
 LOGPOINTS_HOME="${LOGPOINTS_HOME:-"$(dirname "$0")/.."}"
+LOGPOINTS_JVM_OPTS="${LOGPOINTS_JVM_OPTS:-"-Xmx4g"}"
 
-java -Dorg.slf4j.simpleLogger.defaultLogLevel=trace -XX:+UseSerialGC -cp "$LOGPOINTS_HOME/lib/*" anana5.sense.logpoints.PrintGraph "$@"
+if [ -z "$1" ]; then
+    echo "usage: logpoints <serve|print|ping> [options]"
+    exit 1
+fi
+
+case $1 in
+    serve)
+        LOGPOINTS_CLASS="anana5.sense.logpoints.OnlineGraph"
+        ;;
+    ping)
+        LOGPOINTS_CLASS="anana5.sense.logpoints.Ping"
+        ;;
+    print)
+        LOGPOINTS_CLASS="anana5.sense.logpoints.Print"
+        ;;
+    *)
+        echo "Unknown command: $1"
+        exit 1
+        ;;
+esac
+
+shift
+
+exec java -Dorg.slf4j.simpleLogger.defaultLogLevel=trace -XX:+UseSerialGC "$LOGPOINTS_JVM_OPTS" -cp "$LOGPOINTS_HOME"'/lib/*' $LOGPOINTS_CLASS "$@"

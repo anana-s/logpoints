@@ -9,9 +9,9 @@ import net.sourceforge.argparse4j.inf.ArgumentParser;
 import net.sourceforge.argparse4j.inf.ArgumentParserException;
 import net.sourceforge.argparse4j.inf.Namespace;
 
-public class Cmd {
+public class OnlineGraphCLI {
     public static Namespace parse(String[] args) {
-        ArgumentParser parser = ArgumentParsers.newFor("logpoints").build()
+        ArgumentParser parser = ArgumentParsers.newFor("logpoints serve").build()
             .defaultHelp(true)
             .description("Constructs the interprocedural flow graph of logging statements.");
 
@@ -37,14 +37,13 @@ public class Cmd {
             .setDefault(new ArrayList<>())
             .action(Arguments.append());
 
-        parser.addArgument("-o", "--output")
-            .nargs("?")
-            .type(PrintStream.class)
-            .setDefault(System.out);
-
         parser.addArgument("--trace")
-            .setDefault(true)
+            .setDefault(false)
             .action(Arguments.storeTrue());
+
+        parser.addArgument("--port")
+            .setDefault(7000)
+            .type(Integer.class);
 
         parser.addArgument("classes").nargs("+");
 
@@ -56,6 +55,17 @@ public class Cmd {
             parser.handleError(e);
             System.exit(1);
             return null;
+        }
+
+        LogPoints.v().prepend(ns.getBoolean("prepend"));
+        LogPoints.v().classpath(ns.getString("classpath"));
+        LogPoints.v().modulepath(ns.getString("modulepath"));
+        LogPoints.v().include(ns.<String>getList("include"));
+        LogPoints.v().exclude(ns.<String>getList("exclude"));
+        LogPoints.v().classes(ns.<String>getList("classes"));
+        LogPoints.v().trace(ns.getBoolean("trace"));
+        for (String tag : ns.<String>getList("tag")) {
+            LogPoints.v().tag(tag);
         }
 
         return ns;

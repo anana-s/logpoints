@@ -9,7 +9,7 @@ import anana5.util.Promise;
 
 public class PrintPaths {
     public static void main(String[] args) {
-        LogPoints.v().configure(args);
+        OnlineGraphCLI.parse(args);
 
         var graph = LogPoints.v().build().join();
 

@@ -1,11 +1,12 @@
 package anana5.util;
 
+import java.io.Serializable;
 import java.util.Objects;
 
-public class Tuple<FST, SND> {
+public class Tuple<FST, SND> implements Serializable {
     private final FST a;
     private final SND b;
-    private Tuple(FST fst, SND snd) {
+    public Tuple(FST fst, SND snd) {
         a = fst;
         b = snd;
     }
@@ -20,7 +21,7 @@ public class Tuple<FST, SND> {
     }
     @Override
     public boolean equals(Object obj) {
-        return obj == this || obj instanceof Tuple<?, ?> && ((Tuple<?, ?>) obj).a.equals(a) && ((Tuple<?, ?>) obj).b.equals(b);
+        return obj == this || obj.getClass() == Tuple.class && ((Tuple<?, ?>) obj).a.equals(a) && ((Tuple<?, ?>) obj).b.equals(b);
     }
     @Override
     public int hashCode() {

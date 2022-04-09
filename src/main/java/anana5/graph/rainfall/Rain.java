@@ -1,7 +1,10 @@
 package anana5.graph.rainfall;
 
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -40,7 +43,7 @@ public class Rain<T> {
     /**
      * @return Promise<Collection<Droplet<T, Rain<T>>>>
      */
-    public Promise<Collection<Drop<T, Rain<T>>>> collect() {
+    public Promise<? extends List<? extends Drop<T, Rain<T>>>> collect() {
         return unfix.collect();
     }
 
@@ -66,7 +69,8 @@ public class Rain<T> {
      * @return Rain<R>
      */
     public <R> Rain<R> map(Function<T, R> func) {
-        return this.fold(droplets -> Rain.<R>fix(droplets.map(drop -> Drop.of(func.apply(drop.get()), drop.next()))));
+        Map<Drop<T, Rain<R>>, Drop<R, Rain<R>>> memo = new HashMap<>();
+        return this.fold(droplets -> Rain.<R>fix(droplets.map(drop -> memo.computeIfAbsent(drop, d -> Drop.of(func.apply(d.get()), d.next())))));
     }
 
 
