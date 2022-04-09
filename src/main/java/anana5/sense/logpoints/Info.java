@@ -24,10 +24,10 @@ public class Info {
             // traverse graph
             try (var client = Client.connect(ns.getString("address"))) {
                 var vcount = client.send(graph -> {
-                    return graph.vertices().size();
+                    return graph.join().vertices().size();
                 });
                 var ecount = client.send(graph -> {
-                    return graph.edges().size();
+                    return graph.join().edges().size();
                 });
                 System.out.println(client.vertices() + " " + client.edges().size());
             }

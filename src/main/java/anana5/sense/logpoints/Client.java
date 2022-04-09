@@ -61,7 +61,7 @@ public class Client implements Graph<SerialRef, Client.V, Client.E>, AutoCloseab
     @Override
     public Collection<V> vertices() {
         var vertices = send(graph -> {
-            return new ArrayList<>(graph.vertices().stream().map(v -> v.value()).collect(Collectors.toList()));
+            return new ArrayList<>(graph.join().vertices().stream().map(v -> v.value()).collect(Collectors.toList()));
         });
         return vertices.stream().map(this::vertex).collect(Collectors.toList());
     }
@@ -69,7 +69,7 @@ public class Client implements Graph<SerialRef, Client.V, Client.E>, AutoCloseab
     @Override
     public Collection<E> edges() {
         var edges = send(graph -> {
-            return new ArrayList<>(graph.edges().stream().map(e -> Tuple.of(e.source().value(), e.target().value())).collect(Collectors.toList()));
+            return new ArrayList<>(graph.join().edges().stream().map(e -> Tuple.of(e.source().value(), e.target().value())).collect(Collectors.toList()));
         });
         return edges.stream().map(this::edge).collect(Collectors.toList());
     }
@@ -91,7 +91,7 @@ public class Client implements Graph<SerialRef, Client.V, Client.E>, AutoCloseab
             return roots;
         }
         var vertices = send(graph -> {
-            return new ArrayList<>(graph.roots().stream().map(v -> v.value()).collect(Collectors.toList()));
+            return new ArrayList<>(graph.join().roots().stream().map(v -> v.value()).collect(Collectors.toList()));
         });
         return vertices.stream().map(v -> vertex(v)).collect(Collectors.toList());
     }
@@ -100,7 +100,7 @@ public class Client implements Graph<SerialRef, Client.V, Client.E>, AutoCloseab
     public Collection<? extends E> from(V source) {
         SerialRef serial = source.value();
         var edges = send(graph -> {
-            return new ArrayList<>(graph.from(graph.vertex(serial)).stream().map(e -> Tuple.of(e.source().value(), e.target().value())).collect(Collectors.toList()));
+            return new ArrayList<>(graph.join().from(graph.join().vertex(serial)).stream().map(e -> Tuple.of(e.source().value(), e.target().value())).collect(Collectors.toList()));
         });
         return edges.stream().map(e -> edge(e)).collect(Collectors.toList());
     }
@@ -109,7 +109,7 @@ public class Client implements Graph<SerialRef, Client.V, Client.E>, AutoCloseab
     public Collection<? extends E> to(V target) {
         SerialRef serial = target.value();
         var edges = send(graph -> {
-            return new ArrayList<>(graph.to(graph.vertex(serial)).stream().map(e -> Tuple.of(e.source().value(), e.target().value())).collect(Collectors.toList()));
+            return new ArrayList<>(graph.join().to(graph.join().vertex(serial)).stream().map(e -> Tuple.of(e.source().value(), e.target().value())).collect(Collectors.toList()));
         });
         return edges.stream().map(e -> edge(e)).collect(Collectors.toList());
     }
@@ -135,7 +135,7 @@ public class Client implements Graph<SerialRef, Client.V, Client.E>, AutoCloseab
             }
             SerialRef ref = this.ref;
             var refs = Client.this.send(graph -> {
-                return new ArrayList<>(graph.vertex(ref).next().stream().map(v -> v.value()).collect(Collectors.toList()));
+                return new ArrayList<>(graph.join().vertex(ref).next().stream().map(v -> v.value()).collect(Collectors.toList()));
             });
             return refs.stream().map(r -> vertex(r)).collect(Collectors.toList());
         }

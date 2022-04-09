@@ -78,7 +78,7 @@ public class OnlineGraph implements Callable<Void>, AutoCloseable {
             try {
                 var req = (GraphRequest<?>)in.readObject();
                 log.debug("received {}", req);
-                var res = req.accept(graph.join());
+                var res = req.accept(graph);
                 out.writeObject(res);
             } catch (EOFException e) {
                 log.debug("connection closed");

@@ -192,7 +192,7 @@ public class LogPoints {
     RainGraph<Box.Ref> graph = null;
     public final synchronized RainGraph<Box.Ref> graph() {
         if (graph == null) {
-            graph = RainGraph.of(Rain.bind(build()));
+            graph = RainGraph.of(build().join());
         }
         return graph;
     }
@@ -404,8 +404,7 @@ public class LogPoints {
 
                 return LogPoints.this.build(stmt, methods, path).then(subrain -> {
 
-                    Map<Box.Ref, Box.Ref> memo2 = new HashMap<>();
-                    subrain = subrain.map(ref -> memo2.computeIfAbsent(ref, r -> path.box().of(r)));
+                    subrain = subrain.map(ref -> path.box().of(ref));
 
                     Rain<Box.Ref> a, b;
                     a = Rain.bind(Promise.lazy().then(n -> build(next)));

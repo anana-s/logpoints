@@ -6,7 +6,7 @@ LOGPOINTS_HOME="${LOGPOINTS_HOME:-"$(dirname "$0")/.."}"
 LOGPOINTS_JVM_OPTS="${LOGPOINTS_JVM_OPTS:-"-Xmx4g"}"
 
 if [ -z "$1" ]; then
-    echo "usage: logpoints <serve|print|ping> [options]"
+    echo "usage: logpoints <serve|print|info|ping> [options]"
     exit 1
 fi
 
@@ -19,6 +19,9 @@ case $1 in
         ;;
     print)
         LOGPOINTS_CLASS="anana5.sense.logpoints.Print"
+        ;;
+    info)
+        LOGPOINTS_CLASS="anana5.sense.logpoints.Info"
         ;;
     *)
         echo "Unknown command: $1"
