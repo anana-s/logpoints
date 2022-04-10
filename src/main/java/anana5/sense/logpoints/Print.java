@@ -23,9 +23,12 @@ public class Print {
 
             // traverse graph
             try (var client = Client.connect(ns.getString("address")); var printer = new DotPrinter(System.out)) {
-                    client.traverse((edge) -> {
-                        printer.print(edge.source().value(), edge.target().value());
+                for (var root : client.roots()) {
+                    printer.discover(root);
+                    client.traverse(root, (source, target) -> {
+                        printer.print(source, target);
                     });
+                }
             }
         } catch (Exception e) {
             log.error("{}", e.getMessage());

@@ -5,27 +5,25 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
-import java.util.Objects;
+import java.util.Set;
+import java.util.Stack;
+import java.util.function.BiConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
-import anana5.graph.Edge;
 import anana5.graph.Graph;
-import anana5.graph.Vertex;
 import anana5.util.Tuple;
 
-public class Client implements Graph<SerialRef, Client.V, Client.E>, AutoCloseable {
+public class Client implements Graph<SerialRef>, AutoCloseable {
     private Socket socket;
     private ObjectInputStream in;
     private ObjectOutputStream out;
-    private Map<SerialRef, V> memo;
-    private Collection<V> roots;
-
+    private Set<SerialRef> roots;
+    private Map<SerialRef, Set<SerialRef>> sources;
+    private Map<SerialRef, Set<SerialRef>> targets;
 
     public static final Pattern pattern = Pattern.compile("(?<host>[^:]+)(?::(?<port>\\d{1,5}))?");
 
@@ -33,8 +31,9 @@ public class Client implements Graph<SerialRef, Client.V, Client.E>, AutoCloseab
         this.socket = new Socket(host, port);
         this.out = new ObjectOutputStream(socket.getOutputStream());
         this.in = new ObjectInputStream(socket.getInputStream());
-        this.memo = new HashMap<>();
         this.roots = null;
+        this.sources = new HashMap<>();
+        this.targets = new HashMap<>();
     }
 
     public static Client connect(String address) throws IOException {
@@ -54,123 +53,69 @@ public class Client implements Graph<SerialRef, Client.V, Client.E>, AutoCloseab
 
     }
 
-    @Override
-    public Collection<V> vertices() {
-        var vertices = send(graph -> {
-            return new ArrayList<>(graph.join().vertices().stream().map(v -> v.value()).collect(Collectors.toList()));
-        });
-        return vertices.stream().map(this::vertex).collect(Collectors.toList());
+    public void traverse(SerialRef root, BiConsumer<SerialRef, SerialRef> consumer) {
+        traverse(root, consumer, new HashSet<>());
     }
 
-    @Override
-    public Collection<E> edges() {
-        var edges = send(graph -> {
-            return new ArrayList<>(graph.join().edges().stream().map(e -> Tuple.of(e.source().value(), e.target().value())).collect(Collectors.toList()));
-        });
-        return edges.stream().map(this::edge).collect(Collectors.toList());
-    }
-
-    public V vertex(SerialRef value) {
-        return memo.computeIfAbsent(value, v -> new V(v));
-    }
-
-    public E edge(Tuple<SerialRef, SerialRef> edge) {
-        return edge(edge.fst(), edge.snd());
-    }
-
-    public E edge(SerialRef source, SerialRef target) {
-        return new E(source, target);
-    }
-
-    public Collection<V> roots() {
-        if (roots != null) {
-            return roots;
+    private void traverse(SerialRef root, BiConsumer<SerialRef, SerialRef> consumer, Set<SerialRef> seen) {
+        Stack<Tuple<SerialRef, SerialRef>> stack = new Stack<>();
+        seen.add(root);
+        for (SerialRef target : from(root)) {
+            stack.push(Tuple.of(root, target));
         }
-        var vertices = send(graph -> {
-            return new ArrayList<>(graph.join().roots().stream().map(v -> v.value()).collect(Collectors.toList()));
-        });
-        return vertices.stream().map(v -> vertex(v)).collect(Collectors.toList());
-    }
-
-    @Override
-    public Collection<? extends E> from(V source) {
-        SerialRef serial = source.value();
-        var edges = send(graph -> {
-            return new ArrayList<>(graph.join().from(graph.join().vertex(serial)).stream().map(e -> Tuple.of(e.source().value(), e.target().value())).collect(Collectors.toList()));
-        });
-        return edges.stream().map(e -> edge(e)).collect(Collectors.toList());
-    }
-
-    @Override
-    public Collection<? extends E> to(V target) {
-        SerialRef serial = target.value();
-        var edges = send(graph -> {
-            return new ArrayList<>(graph.join().to(graph.join().vertex(serial)).stream().map(e -> Tuple.of(e.source().value(), e.target().value())).collect(Collectors.toList()));
-        });
-        return edges.stream().map(e -> edge(e)).collect(Collectors.toList());
-    }
-
-    public class V implements Vertex<SerialRef, V>, Serializable {
-        private final SerialRef ref;
-        private ArrayList<V> next;
-
-        private V(SerialRef ref) {
-            this.ref = ref;
-            this.next = null;
-        }
-
-        @Override
-        public SerialRef value() {
-            return ref;
-        }
-
-        @Override
-        public Collection<V> next() {
-            if (next != null) {
-                return next;
+        while (!stack.isEmpty()) {
+            var edge = stack.pop();
+            var target = edge.fst();
+            var source = edge.snd();
+            consumer.accept(target, source);
+            if (seen.contains(target) || target.recursive()) {
+                continue;
             }
-            SerialRef ref = this.ref;
-            var refs = Client.this.send(graph -> {
-                return new ArrayList<>(graph.join().vertex(ref).next().stream().map(v -> v.value()).collect(Collectors.toList()));
-            });
-            return refs.stream().map(r -> vertex(r)).collect(Collectors.toList());
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            return obj.getClass() == V.class && ((V) obj).ref.equals(ref);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(ref.hashCode());
+            seen.add(target);
+            for (var next : from(target)) {
+                stack.push(Tuple.of(target, next));
+            }
         }
     }
 
-    public class E extends Tuple<SerialRef, SerialRef> implements Edge<SerialRef, V> {
-        private E(SerialRef source, SerialRef target) {
-            super(source, target);
-        }
+    @Override
+    public Set<SerialRef> all() {
+        return send(graph -> {
+            return new HashSet<>(graph.all());
+        });
+    }
 
-        @Override
-        public V source() {
-            return vertex(fst());
+    public Set<SerialRef> roots() {
+        if (roots == null) {
+            roots = send(graph -> {
+                return new HashSet<>(graph.roots());
+            });
         }
+        return roots;
+    }
 
-        @Override
-        public V target() {
-            return vertex(snd());
+    @Override
+    public Set<SerialRef> from(SerialRef source) {
+        if (sources.containsKey(source)) {
+            return sources.get(source);
         }
+        var targets = send(graph -> {
+            return new HashSet<>(graph.from(source));
+        });
+        sources.put(source, targets);
+        return targets;
+    }
 
-        @Override
-        public boolean equals(Object obj) {
-            return obj.getClass() == E.class && ((E) obj).fst().equals(fst()) && ((E) obj).snd().equals(snd());
+    @Override
+    public Set<SerialRef> to(SerialRef target) {
+        if (targets.containsKey(target)) {
+            return targets.get(target);
         }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(fst(), snd());
-        }
+        var sources = send(graph -> {
+            return new HashSet<>(graph.from(target));
+        });
+        targets.put(target, sources);
+        return sources;
     }
 
     public <R extends Serializable> R send(GraphRequest<R> request) {

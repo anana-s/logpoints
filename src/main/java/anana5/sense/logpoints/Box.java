@@ -31,7 +31,7 @@ public class Box implements Serializable {
         if (this.equals(other.box())) {
             return new Ref(other.get(), true);
         }
-        return new Ref(other.get(), other.recursive);
+        return new Ref(other.get(), other.recursive());
     }
 
     public class Ref implements anana5.util.Ref<Stmt> {

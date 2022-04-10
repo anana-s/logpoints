@@ -1,133 +1,84 @@
 package anana5.graph.rainfall;
 
-import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Map;
-import java.util.Objects;
+import java.util.NoSuchElementException;
 import java.util.Set;
+import java.util.stream.Collectors;
 
-import anana5.graph.Edge;
 import anana5.graph.Graph;
-import anana5.graph.Vertex;
 import anana5.util.PList;
 import anana5.util.Tuple;
 
-public class RainGraph<T> implements Graph<T, RainGraph<T>.DropVertex, RainGraph<T>.DropEdge> {
-    private final Rain<T> rain;
-    private Iterator<DropEdge> it;
-    private Map<Drop<T, Rain<T>>, DropVertex> vertices = new LinkedHashMap<>();
-    private Set<DropEdge> edges = new LinkedHashSet<>();
-    private Map<DropVertex, Collection<DropEdge>> srcMemo = new HashMap<>();
-    private Map<DropVertex, Collection<DropEdge>> tgtMemo = new HashMap<>();
+public class RainGraph<T> implements Graph<T> {
+    private final PList<T> roots;
+    private Iterator<Tuple<T, PList<T>>> it;
+    private Map<T, PList<T>> sources = new HashMap<>();
+    private Map<T, PList<T>> targets = new HashMap<>();
 
     private RainGraph(Rain<T> rain) {
-        this.rain = rain;
-        this.it = collect(null, rain, new HashSet<>()).iterator();
+        this.roots = rain.unfix().map(Drop::get);
+        this.it = collect(null, rain, new HashMap<>()).iterator();
     }
 
     public static <T> RainGraph<T> of(Rain<T> rain) {
         return new RainGraph<>(rain);
     }
 
-    public Rain<T> rain() {
-        return rain;
+    public Set<T> roots() {
+        return roots.collect(Collectors.toSet());
     }
 
     @Override
-    public Collection<DropVertex> vertices() {
-        return vertices.values();
+    public Set<T> all() {
+        resolve();
+        return sources.keySet();
     }
 
     @Override
-    public Collection<DropEdge> edges() {
-        return Collections.unmodifiableCollection(edges);
-    }
-
-    @Override
-    public Collection<DropEdge> from(DropVertex source) {
-        return Collections.unmodifiableCollection(srcMemo.get(source));
-    }
-
-    @Override
-    public Collection<DropEdge> to(DropVertex target) {
-        it.forEachRemaining((edge) -> {});
-        return Collections.unmodifiableCollection(tgtMemo.get(target));
-    }
-
-    private PList<DropEdge> collect(DropVertex prev, Rain<T> rain, Set<T> visited) {
-        return rain.unfix().flatmap(drop -> {
-            if (visited.contains(drop.get())) {
-                return PList.of(edge(prev, vertex(drop)));
+    public Set<T> from(T source) {
+        if (sources.containsKey(source)) {
+            return sources.get(source).collect(Collectors.toSet());
+        }
+        while (it.hasNext()) {
+            Tuple<T, PList<T>> tuple = it.next();
+            if (source.equals(tuple.fst())) {
+                return tuple.snd().collect(Collectors.toSet());
             }
-            visited.add(drop.get());
-            DropVertex vertex = vertex(drop);
-            return PList.cons(edge(prev, vertex), collect(vertex, drop.next(), visited));
-        });
+        }
+        throw new NoSuchElementException();
     }
 
     @Override
-    public Collection<DropVertex> roots() {
-        return rain.unfix().map(this::vertex).collect().join();
+    public Set<T> to(T target) {
+        resolve();
+        return targets.get(target).collect(Collectors.toSet());
     }
 
-    private synchronized DropVertex vertex(Drop<T, Rain<T>> drop) {
-        return vertices.computeIfAbsent(drop, d -> new DropVertex(d));
+    public synchronized RainGraph<T> resolve() {
+        while (it.hasNext()) {
+            it.next();
+        }
+        return this;
     }
 
-    private synchronized DropEdge edge(DropVertex source, DropVertex target) {
-        var edge = new DropEdge(source, target);
-        edges.add(edge);
-        return edge;
+    private void visit(T prev, T t, PList<T> next) {
+        sources.computeIfAbsent(t, k -> next);
+        targets.compute(t, (k, list) -> list == null ? PList.of(prev) : list.push(prev));
     }
 
-    public class DropVertex implements Vertex<T, DropVertex> {
-        private Drop<T, Rain<T>> drop;
-
-        private DropVertex(Drop<T, Rain<T>> drop) {
-            this.drop = drop;
-        }
-
-        @Override
-        public T value() {
-            return drop.get();
-        }
-
-        @Override
-        public List<DropVertex> next() {
-            return drop.next().unfix().map(RainGraph.this::vertex).collect().join();
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            return obj.getClass() == DropVertex.class && ((RainGraph<?>.DropVertex) obj).drop.equals(drop);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(drop);
-        }
-
-    }
-
-    public class DropEdge extends Tuple<DropVertex, DropVertex> implements Edge<T, DropVertex> {
-        private DropEdge(DropVertex source, DropVertex target) {
-            super(source, target);
-        }
-
-        @Override
-        public RainGraph<T>.DropVertex source() {
-            return this.fst();
-        }
-
-        @Override
-        public RainGraph<T>.DropVertex target() {
-            return this.snd();
-        }
+    private PList<Tuple<T, PList<T>>> collect(T prev, Rain<T> rain, Map<T, PList<T>> visited) {
+        return rain.unfix().flatmap(drop -> {
+            T t = drop.get();
+            if (visited.containsKey(t)) {
+                visit(prev, t, PList.of());
+                return PList.of();
+            }
+            PList<T> next = drop.next().unfix().map(Drop::get);
+            visit(prev, t, next);
+            visited.put(t, next);
+            return PList.cons(Tuple.of(t, next), collect(prev, drop.next(), visited));
+        });
     }
 }

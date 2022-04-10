@@ -7,8 +7,8 @@ import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
 import net.sourceforge.argparse4j.inf.Namespace;
 
-public class Info {
-    private static Logger log = LoggerFactory.getLogger(Info.class);
+public class Count {
+    private static Logger log = LoggerFactory.getLogger(Count.class);
 
     public static void main(String[] args) {
         try {
@@ -24,12 +24,9 @@ public class Info {
             // traverse graph
             try (var client = Client.connect(ns.getString("address"))) {
                 var vcount = client.send(graph -> {
-                    return graph.join().vertices().size();
+                    return graph.all().size();
                 });
-                var ecount = client.send(graph -> {
-                    return graph.join().edges().size();
-                });
-                System.out.println(vcount + " " + ecount);
+                System.out.println(vcount);
             }
         } catch (Exception e) {
             log.error("{}", e.getMessage());

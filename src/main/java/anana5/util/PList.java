@@ -2,12 +2,14 @@ package anana5.util;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collector;
 
 public class PList<T> implements Iterable<T> {
     final private Promise<ListF<T, PList<T>>> unfix;
@@ -104,6 +106,15 @@ public class PList<T> implements Iterable<T> {
             collection.add(t);
             return Promise.lazy();
         }).map($ -> collection);
+    }
+
+    public <A, R> R collect(Collector<T, A, R> collector) {
+        return collector.finisher().apply(
+            foldr(collector.supplier().get(), (a, t) -> {
+                collector.accumulator().accept(a, t);
+                return Promise.just(a);
+            }).join()
+        );
     }
 
     public <R> Promise<R> foldr(R r, BiFunction<R, T, Promise<R>> func) {

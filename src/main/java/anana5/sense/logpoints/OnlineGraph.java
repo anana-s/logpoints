@@ -7,14 +7,13 @@ import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.Callable;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import anana5.graph.rainfall.Rain;
 import anana5.util.Promise;
 import net.sourceforge.argparse4j.inf.Namespace;
 
@@ -23,35 +22,40 @@ public class OnlineGraph implements Callable<Void>, AutoCloseable {
     private final Socket socket;
     private final ObjectOutputStream out;
     private final ObjectInputStream in;
-    private final Promise<BoxGraph> graph;
+    private final SerialRefGraph graph;
 
-    public OnlineGraph(ServerSocket server) throws IOException {
-        graph = Promise.lazy(() -> new BoxGraph(LogPoints.v().graph()));
-        socket = server.accept();
-        out = new ObjectOutputStream(socket.getOutputStream());
-        in = new ObjectInputStream(socket.getInputStream());
+    public OnlineGraph(Promise<SerialRefGraph> promise, ServerSocket server) throws IOException {
+        this.socket = server.accept();
+        this.graph = promise.join();
+        this.out = new ObjectOutputStream(socket.getOutputStream());
+        this.in = new ObjectInputStream(socket.getInputStream());
     }
 
     public static void main(String[] args) {
         Namespace ns = OnlineGraphCLI.parse(args);
         ExecutorService executor = Executors.newCachedThreadPool();
 
-        var future = executor.submit(() -> LogPoints.v().graph().roots());
+        // try (var printer = new DotPrinter(System.out)) {
+        //     Rain.bind(LogPoints.v().build()).traverse((a, b) -> {
+        //         printer.print(a == null ? null : new SerialRef(a), new SerialRef(b));
+        //         return Promise.nil();
+        //     }).join();
+        // }
 
-        try {
-            Thread.sleep(1000);
-            if (future.isDone()) {
-                future.get();
+        executor.submit(() -> {
+            try {
+                LogPoints.v().graph().resolve();
+            } catch (RuntimeException e) {
+                e.printStackTrace();
             }
-        } catch (CancellationException | ExecutionException | InterruptedException e) {
-            e.printStackTrace();
-            return;
-        }
+        });
+
+        var promise = Promise.lazy(() -> new SerialRefGraph(LogPoints.v().graph()));
 
         try (var server = new ServerSocket(ns.getInt("port"))) {
             while (true) {
                 try {
-                    var task = new OnlineGraph(server);
+                    var task = new OnlineGraph(promise, server);
                     log.debug("new connection");
                     executor.submit(task);
                 } catch (IOException e) {
