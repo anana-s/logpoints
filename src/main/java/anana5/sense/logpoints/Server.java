@@ -13,20 +13,16 @@ import java.util.concurrent.Executors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import anana5.graph.rainfall.Rain;
-import anana5.util.Promise;
 import net.sourceforge.argparse4j.inf.Namespace;
 
-public class OnlineGraph implements Callable<Void>, AutoCloseable {
-    private static final Logger log = LoggerFactory.getLogger(OnlineGraph.class);
+public class Server implements Callable<Void>, AutoCloseable {
+    private static final Logger log = LoggerFactory.getLogger(Server.class);
     private final Socket socket;
     private final ObjectOutputStream out;
     private final ObjectInputStream in;
-    private final SerialRefGraph graph;
 
-    public OnlineGraph(Promise<SerialRefGraph> promise, ServerSocket server) throws IOException {
+    public Server(ServerSocket server) throws IOException {
         this.socket = server.accept();
-        this.graph = promise.join();
         this.out = new ObjectOutputStream(socket.getOutputStream());
         this.in = new ObjectInputStream(socket.getInputStream());
     }
@@ -44,18 +40,17 @@ public class OnlineGraph implements Callable<Void>, AutoCloseable {
 
         executor.submit(() -> {
             try {
-                LogPoints.v().graph().resolve();
-            } catch (RuntimeException e) {
+                LogPoints.v().graph();
+            } catch (Throwable e) {
                 e.printStackTrace();
+                executor.shutdownNow();
             }
         });
-
-        var promise = Promise.lazy(() -> new SerialRefGraph(LogPoints.v().graph()));
 
         try (var server = new ServerSocket(ns.getInt("port"))) {
             while (true) {
                 try {
-                    var task = new OnlineGraph(promise, server);
+                    var task = new Server(server);
                     log.debug("new connection");
                     executor.submit(task);
                 } catch (IOException e) {
@@ -72,23 +67,27 @@ public class OnlineGraph implements Callable<Void>, AutoCloseable {
 
     @Override
     public Void call() {
+        var graph = LogPoints.v().graph();
         log.debug("started");
-        while (true) {
-            try {
-                var req = (GraphRequest<?>)in.readObject();
-                log.debug("received {}", req);
-                var res = req.accept(graph);
-                out.writeObject(res);
-            } catch (EOFException e) {
-                log.debug("connection closed");
-                break;
-            } catch (ClassNotFoundException | IOException e) {
-                log.error("{}", e);
-                e.printStackTrace();
-                break;
+        try {
+            while (true) {
+                try {
+                    var req = (GraphRequest<?>)in.readObject();
+                    log.debug("received {}", req);
+                    var res = req.accept(graph);
+                    out.writeObject(res);
+                } catch (EOFException e) {
+                    log.debug("connection closed");
+                    break;
+                } catch (Throwable e) {
+                    log.error("exited on error");
+                    e.printStackTrace();
+                    break;
+                }
             }
+        } finally {
+            close();
         }
-        close();
         return null;
     }
 

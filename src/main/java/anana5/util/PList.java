@@ -1,14 +1,10 @@
 package anana5.util;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Iterator;
-import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.function.BiFunction;
 import java.util.function.Function;
-import java.util.function.Supplier;
 import java.util.stream.Collector;
 
 public class PList<T> implements Iterable<T> {
@@ -50,6 +46,10 @@ public class PList<T> implements Iterable<T> {
         }));
     }
 
+    public Promise<ListF<T, PList<T>>> unfix() {
+        return unfix;
+    }
+
     public static <S, T> PList<T> unfold(S s, Function<S, Promise<ListF<T, S>>> func) {
         return PList.fix(func.apply(s).map(listF -> listF.fmap(s$ -> PList.unfold(s$, func))));
     }
@@ -58,12 +58,20 @@ public class PList<T> implements Iterable<T> {
         return PList.cons(item, this);
     }
 
-    public Promise<Maybe<T>> head() {
-        return unfix.map(listF -> listF.match(() -> Maybe.nothing(), (t, f) -> Maybe.just(t)));
+    public T head() {
+        var maybe = unfix.map(listF -> listF.match(() -> Maybe.<T>nothing(), (t, f) -> Maybe.just(t))).join();
+        if (!maybe.check()) {
+            throw new NoSuchElementException();
+        }
+        return maybe.get();
     }
 
-    public Promise<Maybe<PList<T>>> tail() {
-        return unfix.map(listF -> listF.match(() -> Maybe.nothing(), (t, f) -> Maybe.just(f)));
+    public PList<T> tail() {
+        var maybe = unfix.map(listF -> listF.match(() -> Maybe.<PList<T>>nothing(), (t, f) -> Maybe.just(f))).join();
+        if (!maybe.check()) {
+            throw new NoSuchElementException();
+        }
+        return maybe.get();
     }
 
     public <R> PList<R> map(Function<T, R> func) {
@@ -91,43 +99,44 @@ public class PList<T> implements Iterable<T> {
         return llist;
     }
 
-    public Promise<Void> traverse(Function<T, Promise<Void>> consumer) {
-        return unfix.then(listF -> listF.match(() -> Promise.lazy(), (t, next) -> consumer.apply(t).then($ -> next.traverse(consumer))));
+    public void traverse(Function<T, Boolean> consumer) {
+        _traverse(consumer).join();
+    }
+
+    public Promise<Void> _traverse(Function<T, Boolean> consumer) {
+        return unfix.then(listF -> listF.match(() -> Promise.<Void>nil(), (head, tail) -> {
+            if (consumer.apply(head)) {
+                return tail._traverse(consumer);
+            } else {
+                return Promise.nil();
+            }
+        }));
     }
 
     // public Promise<Void> traverse(BiFunction<Promise<Void>, Promise<Void>, Promise<Void>> folder, Function<T, Promise<Void>> consumer) {
     //     return fold(p -> p.then(listF -> listF.match(() -> Promise.lazy(), (t, f) -> folder.apply(Promise.lazy().then($ -> consumer.apply(t)), f))));
     // }
 
-    public Promise<List<T>> collect() {
-        List<T> collection = new ArrayList<>();
-
-        return traverse(t -> {
-            collection.add(t);
-            return Promise.lazy();
-        }).map($ -> collection);
-    }
-
     public <A, R> R collect(Collector<T, A, R> collector) {
         return collector.finisher().apply(
             foldr(collector.supplier().get(), (a, t) -> {
                 collector.accumulator().accept(a, t);
-                return Promise.just(a);
-            }).join()
+                return a;
+            })
         );
     }
 
-    public <R> Promise<R> foldr(R r, BiFunction<R, T, Promise<R>> func) {
-        return unfix.then(listF -> listF.match(() -> Promise.just(r), (t, next) -> func.apply(r, t).then(s -> next.foldr(s, func))));
+    public <R> R foldr(R r, BiFunction<R, T, R> func) {
+        return unfix.map(listF -> listF.match(() -> r, (t, next) -> next.foldr(func.apply(r, t), func))).join();
     }
 
-    public <R> Promise<R> foldl(R r, BiFunction<T, R, Promise<R>> func) {
-        return unfix.then(listF -> listF.match(() -> Promise.just(r), (t, next) -> next.foldl(r, func).then(s -> func.apply(t, s))));
+    public <R> R foldl(R r, BiFunction<T, R, R> func) {
+        return unfix.map(listF -> listF.match(() -> r, (t, next) -> func.apply(t, next.foldl(r, func)))).join();
     }
 
-    // public <R> Promise<R> fold(Function<Promise<ListF<T, Promise<R>>>, Promise<R>> func) {
-    //     return func.apply(unfix.map(listF -> listF.fmap(f -> f.fold(func))));
-    // }
+    public <R> R fold(Function<Promise<ListF<T, R>>, R> func) {
+        return func.apply(unfix.map(listF -> listF.fmap(f -> f.fold(func))));
+    }
 
     public static <T> PList<T> bind(Promise<PList<T>> promise) {
         return new PList<>(promise.then(lList -> lList.unfix));
@@ -137,65 +146,44 @@ public class PList<T> implements Iterable<T> {
         return PList.bind(promises.unfix.map(listF -> listF.match(() -> PList.<T>nil(), (p, next) -> PList.fix(p.map(t -> ListF.cons(t, PList.bind(next)))))));
     }
 
-    @Deprecated
-    public Promise<Boolean> isEmpty() {
-        return unfix.map(listF -> listF.match(() -> true, (t, f) -> false));
+    public Boolean empty() {
+        return unfix.map(listF -> listF.match(() -> true, (t, f) -> false)).join();
     }
 
-    public Promise<Boolean> empty() {
-        return unfix.map(listF -> listF.match(() -> true, (t, f) -> false));
+    public PList<T> filter(Function<? super T, ? extends Boolean> func) {
+        return _filter(func).join();
     }
 
-    public PList<T> filter(Function<? super T, ? extends Promise<? extends Boolean>> func) {
-        var out = this.<PList<T>>foldl(PList.of(), (head, tail) -> {
-            return func.apply(head).then(b -> {
-                if (b) {
-                    return Promise.just(PList.cons(head, tail));
-                } else {
-                    return Promise.just(tail);
-                }
-            });
-        });
-
-        return PList.bind(out);
+    public Promise<PList<T>> _filter(Function<? super T, ? extends Boolean> func) {
+        return unfix.then(listF -> listF.match(() -> Promise.just(PList.<T>of()), (t, next) -> {
+            if (func.apply(t)) {
+                return next._filter(func).then(tail -> {
+                    return Promise.just(PList.cons(t, tail));
+                });
+            } else {
+                return next._filter(func);
+            }
+        }));
     }
 
-    public Promise<LList<T>> resolve() {
-        return unfix.then(listF -> listF.match(() -> Promise.just(LList.of()), (t, next) -> next.resolve().then(l -> Promise.just(LList.cons(t, l)))));
+    public boolean any(Function<? super T, ? extends Boolean> func) {
+        return !filter(func).empty();
     }
 
-    public <R> Promise<R> match(Supplier<R> nil, BiFunction<T, PList<T>, R> cons) {
-        return unfix.map(listF -> listF.match(() -> nil.get(), (t, f) -> cons.apply(t, f)));
+    public LList<T> resolve() {
+        return foldl(LList.of(), (head, acc) -> LList.cons(head, acc));
     }
 
-    public <R> LListMatch<R> match() {
-        return new LListMatch<>();
+    public boolean contains(T t) {
+        return _contains(t).join();
     }
 
-    public class LListMatch<R> extends Match<Promise<R>> {
-        Supplier<R> nil;
-        BiFunction<T, PList<T>, R> cons;
-        public LListMatch() {
-            set(() -> unfix.map(listF -> listF.match(nil, cons)));
-        }
-
-        public LListMatch<R> nil(Supplier<R> nil) {
-            this.nil = nil;
-            return this;
-        }
-
-        public LListMatch<R> cons(BiFunction<T, PList<T>, R> cons) {
-            this.cons = cons;
-            return this;
-        }
-    }
-
-    public Promise<Boolean> contains(T t) {
+    private Promise<Boolean> _contains(T t) {
         return unfix.<Boolean>then(listF -> listF.match(() -> Promise.just(false), (head, tail) -> {
             if (head.equals(t)) {
                 return Promise.just(true);
             } else {
-                return tail.contains(t);
+                return tail._contains(t);
             }
         }));
     }
@@ -214,7 +202,7 @@ public class PList<T> implements Iterable<T> {
 
         @Override
         public boolean hasNext() {
-            return !cur.empty().join();
+            return !cur.empty();
         }
 
         @Override

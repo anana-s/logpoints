@@ -9,42 +9,42 @@ import anana5.util.Tuple;
 
 public class ComputePrintlnRatio {
 
-    public static void main(String[] args) {
-        OnlineGraphCLI.parse(args);
-        var graph = LogPoints.v().build().join();
+    // public static void main(String[] args) {
+    //     OnlineGraphCLI.parse(args);
+    //     var graph = LogPoints.v().build().join();
 
-        // stats
-        Set<Box.Ref> seen = new HashSet<>();
-        PList<Tuple<Double, Double>> ratios = graph.fold(droplets -> {
-            return droplets.flatmap(droplet -> {
-                if (seen.contains(droplet.get())) {
-                    return PList.cons(Tuple.of(.0, .0), PList.of());
-                }
-                seen.add(droplet.get());
-                return PList.bind(droplet.next().empty().map(isEmpty -> {
-                    if (droplet.get().get().getInvokeExpr().getMethodRef().getName().equals("println")) {
-                        if (isEmpty) {
-                            return PList.cons(Tuple.of(1., 1.), PList.of());
-                        } else {
-                            return droplet.next().map(tuple -> Tuple.of(tuple.fst() + 1., tuple.snd() + 1.));
-                        }
-                    } else {
-                        if (isEmpty) {
-                            return PList.cons(Tuple.of(0., 1.), PList.of());
-                        } else  {
-                            return droplet.next().map(tuple -> Tuple.of(tuple.fst(), tuple.snd() + 1.));
-                        }
-                    }
-                }));
-            });
-        });
+    //     // stats
+    //     Set<Box.Ref> seen = new HashSet<>();
+    //     PList<Tuple<Double, Double>> ratios = graph.fold(droplets -> {
+    //         return droplets.flatmap(droplet -> {
+    //             if (seen.contains(droplet.get())) {
+    //                 return PList.cons(Tuple.of(.0, .0), PList.of());
+    //             }
+    //             seen.add(droplet.get());
+    //             return PList.bind(droplet.next().empty().map(isEmpty -> {
+    //                 if (droplet.get().get().getInvokeExpr().getMethodRef().getName().equals("println")) {
+    //                     if (isEmpty) {
+    //                         return PList.cons(Tuple.of(1., 1.), PList.of());
+    //                     } else {
+    //                         return droplet.next().map(tuple -> Tuple.of(tuple.fst() + 1., tuple.snd() + 1.));
+    //                     }
+    //                 } else {
+    //                     if (isEmpty) {
+    //                         return PList.cons(Tuple.of(0., 1.), PList.of());
+    //                     } else  {
+    //                         return droplet.next().map(tuple -> Tuple.of(tuple.fst(), tuple.snd() + 1.));
+    //                     }
+    //                 }
+    //             }));
+    //         });
+    //     });
 
-        Double average = ratios.foldr(Tuple.of(.0, .0), (cur, acc) -> {
-            return Promise.just(Tuple.of((cur.fst() / cur.snd()) + acc.fst(), acc.snd() + 1));
-        }).map(tuple -> {
-            return tuple.fst() / tuple.snd();
-        }).join();
+    //     Double average = ratios.foldr(Tuple.of(.0, .0), (cur, acc) -> {
+    //         return Promise.just(Tuple.of((cur.fst() / cur.snd()) + acc.fst(), acc.snd() + 1));
+    //     }).map(tuple -> {
+    //         return tuple.fst() / tuple.snd();
+    //     }).join();
 
-        System.out.println(average);
-    }
+    //     System.out.println(average);
+    // }
 }

@@ -41,7 +41,7 @@ public class LList<T> implements Iterable<T> {
     }
 
     public static <T> LList<T> from(Iterable<T> ts) {
-        return PList.from(ts).resolve().join();
+        return PList.from(ts).resolve();
     }
 
     public static <T> LList<T> nil() {

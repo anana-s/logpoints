@@ -1,5 +1,7 @@
 package anana5.sense.logpoints;
 
+import java.util.HashSet;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,9 +24,13 @@ public class Count {
             Namespace ns = parser.parseArgs(args);
 
             // traverse graph
-            try (var client = Client.connect(ns.getString("address"))) {
+            try (var client = RemoteSerialRefGraph.connect(ns.getString("address"))) {
                 var vcount = client.send(graph -> {
-                    return graph.all().size();
+                    var vertices = new HashSet<SerialRef>();
+                    for (var root : graph.roots()) {
+                        graph.traverse(vertices, root, (src, tgt) -> {});
+                    }
+                    return vertices.size();
                 });
                 System.out.println(vcount);
             }
@@ -34,4 +40,22 @@ public class Count {
         }
     }
     
+
+    // private static class Counter implements Iterator<Integer> {
+    //     private int count = 0;
+
+    //     @Override
+    //     public boolean hasNext() {
+    //         return count <= Integer.MAX_VALUE;
+    //     }
+
+    //     @Override
+    //     public Integer next() {
+    //         return count++;
+    //     }
+
+    //     public Integer get() {
+    //         return count;
+    //     }
+    // }
 }

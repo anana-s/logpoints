@@ -4,20 +4,13 @@ import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
-import org.apache.commons.lang3.ArrayUtils;
-
 import soot.jimple.Stmt;
 
 public class Box implements Serializable {
     private static int probe;
-    private final byte[] hash;
 
     private static byte[] probe() {
         return ByteBuffer.allocate(4).putInt(probe++).array();
-    }
-
-    public Box() {
-        this.hash = probe();
     }
 
     public Ref of(Stmt value) {
@@ -51,7 +44,7 @@ public class Box implements Serializable {
 
         @Override
         public byte[] hash() {
-            return ArrayUtils.addAll(Box.this.hash, this.hash);
+            return this.hash;
         }
 
         @Override
@@ -96,6 +89,5 @@ public class Box implements Serializable {
         var expr = stmt.getInvokeExpr();
         var mref = expr.getMethodRef();
         return mref.getName() + expr.getArgs().toString() + stmt.getTag("SourceMapTag").toString();
-
     }
 }

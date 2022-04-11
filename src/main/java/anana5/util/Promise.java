@@ -5,34 +5,45 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class Promise<T> implements Computation<T> {
-    private boolean resolved;
+
+    private enum State {
+        SCHEDULED,
+        PENDING,
+        RESOLVED,
+        REJECTED
+    }
+
+    private State state;
     private T value;
 
-    static class Unresolved extends RuntimeException {
+    public static class Unresolved extends Exception {
         Promise<?> promise;
         public Unresolved(Promise<?> promise) {
             this.promise = promise;
         }
     }
 
+    public static class RecursiveDependencyException extends Exception {}
+
     private Promise() {
-        this.resolved = false;
+        this.state = State.SCHEDULED;
     }
 
-    private Promise(Consumer<Consumer<T>> promise) {
+    private Promise(Consumer<Consumer<T>> function) {
         this();
-        promise.accept(this::resolve);
+        this.state = State.PENDING;
+        function.accept(this::resolve);
     }
 
     public void resolve(T t) {
-        if (!resolved) {
+        if (!resolved()) {
             value = t;
-            resolved = true;
+            state = State.RESOLVED;
         }
     }
 
-    public static <T> Promise<T> of(Consumer<Consumer<T>> promise) {
-        return new Promise<>(promise);
+    public static <T> Promise<T> of(Consumer<Consumer<T>> function) {
+        return new Promise<>(function);
     }
 
     public static <T> Promise<T> just(T t) {
@@ -64,17 +75,26 @@ public class Promise<T> implements Computation<T> {
         ComputationAdapter(Computation<T> c) {
             this.c = c;
         }
+
         @Override
-        public Continuation accept(Callback<T> k) throws Unresolved {
-            if (super.resolved) {
-                return Continuation.apply(k, super.value);
-            } else {
-                return Continuation.accept(c, k.map(s -> {
-                    resolve(s);
-                    return s;
-                }));
+        public Continuation accept(Callback<T> k) throws ExecutionException {
+            try {
+                return super.accept(k);
+            } catch (ExecutionException e) {
+                if (e.getCause() instanceof Unresolved) {
+                    if (pending()) {
+                        throw new ExecutionException(new RecursiveDependencyException());
+                    }
+                    super.state = State.PENDING;
+                    return Continuation.accept(c, k.map(s -> {
+                        resolve(s);
+                        return s;
+                    }));
+                }
+                throw e;
             }
         }
+
         @Override
         public void resolve(T t) {
             super.resolve(t);
@@ -83,16 +103,16 @@ public class Promise<T> implements Computation<T> {
     }
 
     @Override
-    public Continuation accept(Callback<T> k) throws Unresolved {
-        if (resolved) {
+    public Continuation accept(Callback<T> k) throws ExecutionException {
+        if (resolved()) {
             return Continuation.apply(k, value);
         } else {
-            throw new Unresolved(this);
+            throw new ExecutionException(new Unresolved(this));
         }
     }
 
     @Override
-    public Promise<T> effect(Function<? super T, ? extends Computation<Void>> consumer) {
+    public Promise<T> effect(Consumer<? super T> consumer) {
         return Promise.from(Computation.super.effect(consumer));
     }
 
@@ -116,16 +136,27 @@ public class Promise<T> implements Computation<T> {
     }
 
     public boolean resolved() {
-        return this.resolved;
+        return state.equals(State.RESOLVED);
     }
 
-    public synchronized T join() {
+    public boolean pending() {
+        return state.equals(State.PENDING);
+    }
+
+    public boolean rejected() {
+        return state.equals(State.REJECTED);
+    }
+
+    public boolean done() {
+        return resolved() || rejected();
+    }
+
+    public boolean scheduled() {
+        return state.equals(State.SCHEDULED);
+    }
+
+    public synchronized T join() throws ExecutionException {
         Computation.super.run(this::resolve);
         return value;
-    }
-
-    public static <T> Promise<PList<T>> all(PList<Promise<T>> promises) {
-        return promises.foldl(PList.of(), (p, acc) -> p.map(t -> PList.cons(t, acc)));
-        // return promises.fold(p -> p.then(listF -> listF.match(() -> Promise.nil(), (pT, pAcc) -> pT.then(t -> pAcc.then(acc -> Promise.just(LList.cons(t, acc)))))));
     }
 }

@@ -38,13 +38,6 @@ public class Rain<T> {
     }
 
     /**
-     * @return Promise<Collection<Droplet<T, Rain<T>>>>
-     */
-    public Promise<? extends List<? extends Drop<T, Rain<T>>>> collect() {
-        return unfix.collect();
-    }
-
-    /**
      * @param func
      * @return R
      */
@@ -71,56 +64,12 @@ public class Rain<T> {
 
 
     /**
-     * @param visitor
-     * @return Promise<Void>
-     */
-    public Promise<Void> traverse(BiFunction<T, T, Promise<Void>> visitor) {
-        return traverse(null, visitor, new HashSet<>());
-    }
-
-    private Promise<Void> traverse(T source, BiFunction<T, T, Promise<Void>> visitor, Set<T> visited) {
-        return unfix.traverse(droplet -> {
-            var target = droplet.get();
-            if (visited.contains(target)) {
-                return visitor.apply(source, target);
-            }
-            visited.add(target);
-            return visitor.apply(source, target).then($ -> droplet.next().traverse(target, visitor, visited));
-        });
-    }
-
-    /**
-     * @param visitor
-     * @return Promise<Void>
-     */
-    public Promise<Void> traverse(Function<T, Promise<Void>> visitor) {
-        return traverse(visitor, new HashSet<>());
-    }
-
-    private Promise<Void> traverse(Function<T, Promise<Void>> visitor, Set<T> visited) {
-        return unfix.traverse(droplet -> {
-            var target = droplet.get();
-            if (visited.contains(target)) {
-                return Promise.nil();
-            }
-            visited.add(target);
-            return visitor.apply(target).then($ -> droplet.next().traverse(visitor, visited));
-        });
-    }
-
-
-    /**
      * @param rain
      * @return Rain<T>
      */
     @SafeVarargs
-    public static <T> Rain<T> merge(Rain<T>... rain) {
-        @SuppressWarnings("unchecked")
-        PList<Drop<T, Rain<T>>>[] droplets = new PList[rain.length];
-        for (int i = 0; i < rain.length; i++) {
-            droplets[i] = rain[i].unfix;
-        }
-        return new Rain<>(PList.merge(droplets));
+    public static <T> Rain<T> merge(Rain<T>... rains) {
+        return merge(PList.of(rains));
     }
 
     public static <T> Rain<T> merge(PList<Rain<T>> rains) {
@@ -131,22 +80,13 @@ public class Rain<T> {
         return new Rain<>(PList.bind(promise.map(rain -> rain.unfix)));
     }
 
-    @Deprecated
-    public Promise<Boolean> isEmpty() {
+    public boolean empty() {
         return unfix.empty();
     }
 
-    public Promise<Boolean> empty() {
-        return unfix.empty();
-    }
-
-    public Rain<T> filter(Function<? super T, ? extends Promise<? extends Boolean>> predicate) {
+    public Rain<T> filter(Function<? super T, ? extends Boolean> predicate) {
         var droplets = unfix().filter(droplet -> predicate.apply(droplet.get()));
         droplets = droplets.map(drop -> Drop.of(drop.get(), drop.next().filter(predicate)));
         return new Rain<>(droplets);
-    }
-
-    public Promise<Rain<T>> resolve() {
-        return traverse(t -> Promise.lazy()).map($ -> this);
     }
 }

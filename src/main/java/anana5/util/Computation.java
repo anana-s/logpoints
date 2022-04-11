@@ -7,7 +7,13 @@ import java.util.function.Supplier;
 @FunctionalInterface
 public interface Computation<T> {
 
-    Continuation accept(Callback<T> k);
+    public static class ExecutionException extends RuntimeException {
+        public ExecutionException(Throwable cause) {
+            super(cause);
+        }
+    }
+
+    Continuation accept(Callback<T> k) throws ExecutionException;
 
     static <T> Computation<T> nil() {
         return new Nil<>();
@@ -69,8 +75,11 @@ public interface Computation<T> {
         }
     }
 
-    default Computation<T> effect(Function<? super T, ? extends Computation<Void>> consumer) {
-        return bind(consumer).bind(nil -> this);
+    default Computation<T> effect(Consumer<? super T> consumer) {
+        return map(t -> {
+            consumer.accept(t);
+            return t;
+        });
     }
 
     default <R> Computation<R> map(Function<? super T, ? extends R> f) {
@@ -195,7 +204,7 @@ public interface Computation<T> {
     }
 
     interface Continuation {
-        Continuation next();
+        Continuation next() throws ExecutionException;
 
         static <T> Continuation accept(Computation<T> c, Callback<T> k) {
             return new Visit<T>(c, k);
@@ -208,7 +217,7 @@ public interface Computation<T> {
                 this.k = k;
             }
             @Override
-            public Continuation next() {
+            public Continuation next() throws ExecutionException {
                 return c.accept(k);
             }
         }
@@ -230,7 +239,7 @@ public interface Computation<T> {
         }
     }
 
-    default void run(Consumer<? super T> f) {
+    default void run(Consumer<? super T> f) throws ExecutionException {
         Continuation a = this.accept(Callback.pure(f));
         while (a != null) {
             a = a.next();
