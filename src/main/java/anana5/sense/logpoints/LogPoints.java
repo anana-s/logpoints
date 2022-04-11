@@ -2,29 +2,22 @@ package anana5.sense.logpoints;
 
 import java.io.IOException;
 import java.nio.file.Files;
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.function.Function;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import anana5.graph.rainfall.Drop;
 import anana5.graph.rainfall.Rain;
-import anana5.graph.rainfall.RainGraph;
 import anana5.sense.logpoints.Box.Ref;
-import anana5.util.Computation;
 import anana5.util.PList;
 import anana5.util.Promise;
-import anana5.util.Tuple;
 import soot.Body;
 import soot.PackManager;
 import soot.Scene;

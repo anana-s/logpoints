@@ -1,11 +1,10 @@
 package anana5.sense.logpoints;
 
-import java.io.EOFException;
 import java.io.IOException;
 import java.util.HashSet;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+// import org.slf4j.Logger;
+// import org.slf4j.LoggerFactory;
 
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
@@ -13,7 +12,7 @@ import net.sourceforge.argparse4j.inf.ArgumentParserException;
 import net.sourceforge.argparse4j.inf.Namespace;
 
 public class Print {
-    private static Logger log = LoggerFactory.getLogger(Print.class);
+    // private static Logger log = LoggerFactory.getLogger(Print.class);
 
     public static void main(String[] args) {
         ArgumentParser parser = ArgumentParsers.newFor("logpoints ping").build()
