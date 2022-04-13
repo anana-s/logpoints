@@ -28,7 +28,17 @@ public class Count {
                 var vcount = client.send(graph -> {
                     var vertices = new HashSet<SerialRef>();
                     for (var root : graph.roots()) {
-                        graph.traverse(vertices, root, (src, tgt) -> {});
+                        if (root.sentinel() || vertices.contains(root)) {
+                            continue;
+                        }
+                        vertices.add(root);
+                        graph.traverse(root, (src, tgt) -> {
+                            if (tgt.sentinel() || vertices.contains(tgt)) {
+                                return false;
+                            }
+                            vertices.add(tgt);
+                            return true;
+                        });
                     }
                     return vertices.size();
                 });

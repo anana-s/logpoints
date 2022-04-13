@@ -41,6 +41,9 @@ public class Rain<T> {
         return func.apply(unfix.map(drop -> Drop.of(drop.get(), drop.next().fold(func))));
     }
 
+    public <R> Rain<R> unfold(Function<Rain<T>, PList<Drop<R, Rain<T>>>> func) {
+        return Rain.unfold(this, func);
+    }
 
     /**
      * @param func
@@ -55,9 +58,8 @@ public class Rain<T> {
      * @return Rain<R>
      */
     public <R> Rain<R> map(Function<T, R> func) {
-        return this.fold(droplets -> Rain.<R>fix(droplets.map(drop -> Drop.of(func.apply(drop.get()), drop.next()))));
+        return Rain.fix(unfix.map(drop -> Drop.of(func.apply(drop.get()), drop.next().map(func))));
     }
-
 
     /**
      * @param rain
@@ -65,7 +67,11 @@ public class Rain<T> {
      */
     @SafeVarargs
     public static <T> Rain<T> merge(Rain<T>... rains) {
-        return merge(PList.of(rains));
+        var unfix = rains[rains.length - 1].unfix;
+        for (int i = rains.length - 2; i >= 0; i--) {
+            unfix = unfix.concat(rains[i].unfix());
+        }
+        return Rain.fix(unfix);
     }
 
     public static <T> Rain<T> merge(PList<Rain<T>> rains) {
@@ -76,13 +82,7 @@ public class Rain<T> {
         return new Rain<>(PList.bind(promise.map(rain -> rain.unfix)));
     }
 
-    public boolean empty() {
+    public Promise<Boolean> empty() {
         return unfix.empty();
-    }
-
-    public Rain<T> filter(Function<? super T, ? extends Boolean> predicate) {
-        var droplets = unfix().filter(droplet -> predicate.apply(droplet.get()));
-        droplets = droplets.map(drop -> Drop.of(drop.get(), drop.next().filter(predicate)));
-        return new Rain<>(droplets);
     }
 }

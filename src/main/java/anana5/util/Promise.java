@@ -23,8 +23,6 @@ public class Promise<T> implements Computation<T> {
         }
     }
 
-    public static class RecursiveDependencyException extends Exception {}
-
     private Promise() {
         this.state = State.SCHEDULED;
     }
@@ -70,10 +68,20 @@ public class Promise<T> implements Computation<T> {
         return new ComputationAdapter<>(computation);
     }
 
-    static class ComputationAdapter<T> extends Promise<T> {
+    public static class ComputationAdapter<T> extends Promise<T> {
         Computation<T> c;
         ComputationAdapter(Computation<T> c) {
             this.c = c;
+        }
+
+        public static class RecursiveDependencyException extends Exception {
+            private final Computation<?> c;
+            public RecursiveDependencyException(Computation<?> c) {
+                this.c = c;
+            }
+            public Computation<?> computation() {
+                return c;
+            }
         }
 
         @Override
@@ -83,7 +91,8 @@ public class Promise<T> implements Computation<T> {
             } catch (ExecutionException e) {
                 if (e.getCause() instanceof Unresolved) {
                     if (pending()) {
-                        throw new ExecutionException(new RecursiveDependencyException());
+                        super.state = State.REJECTED;
+                        throw new ExecutionException(new RecursiveDependencyException(c));
                     }
                     super.state = State.PENDING;
                     return Continuation.accept(c, k.map(s -> {

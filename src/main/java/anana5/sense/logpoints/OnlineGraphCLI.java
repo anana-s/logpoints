@@ -2,6 +2,7 @@ package anana5.sense.logpoints;
 
 import java.util.ArrayList;
 
+import anana5.sense.logpoints.LogPoints.EntrypointNotFoundException;
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.impl.Arguments;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
@@ -9,7 +10,7 @@ import net.sourceforge.argparse4j.inf.ArgumentParserException;
 import net.sourceforge.argparse4j.inf.Namespace;
 
 public class OnlineGraphCLI {
-    public static Namespace parse(String[] args) {
+    public static Namespace parse(String[] args) throws EntrypointNotFoundException {
         ArgumentParser parser = ArgumentParsers.newFor("logpoints serve").build()
             .defaultHelp(true)
             .description("Constructs the interprocedural flow graph of logging statements.");
@@ -44,7 +45,7 @@ public class OnlineGraphCLI {
             .setDefault(7000)
             .type(Integer.class);
 
-        parser.addArgument("classes").nargs("+");
+        parser.addArgument("entrypoints").nargs("+");
 
         Namespace ns;
 
@@ -61,7 +62,9 @@ public class OnlineGraphCLI {
         LogPoints.v().modulepath(ns.getString("modulepath"));
         LogPoints.v().include(ns.<String>getList("include"));
         LogPoints.v().exclude(ns.<String>getList("exclude"));
-        LogPoints.v().classes(ns.<String>getList("classes"));
+        for (String entrypoint : ns.<String>getList("entrypoints")) {
+            LogPoints.v().entrypoint(entrypoint);
+        }
         LogPoints.v().trace(ns.getBoolean("trace"));
         for (String tag : ns.<String>getList("tag")) {
             LogPoints.v().tag(tag);

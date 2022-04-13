@@ -1,8 +1,6 @@
 package anana5.util;
 
-import java.io.Serializable;
-
-public interface Ref<T> extends Serializable {
+public interface Ref<T> {
     byte[] hash();
     T get();
 }

@@ -19,40 +19,42 @@ class LListTest {
 
     @Test
     void foldr() {
-        var actual = a.foldr(new ArrayList<>(), (acc, i) -> {
-            acc.add(i);
-            return acc;
+        var actual = a.foldr(Promise.just(new ArrayList<>()), (acc, i) -> {
+            return acc.effect(a -> {
+                a.add(i);
+            });
         });
-        assertEquals(Arrays.asList(1, 2, 3), actual);
+        assertEquals(Arrays.asList(1, 2, 3), actual.join());
     }
 
     @Test
     void foldl() {
-        var actual = a.foldr(new ArrayList<>(), (acc, i) -> {
-            acc.add(i);
-            return acc;
+        var actual = a.foldl(Promise.just(new ArrayList<>()), (i, acc) -> {
+            return acc.effect(a -> {
+                a.add(i);
+            });
         });
-        assertEquals(Arrays.asList(3, 2, 1), actual);
+        assertEquals(Arrays.asList(3, 2, 1), actual.join());
     }
 
     @Test
     void collect() {
-        assertEquals(Arrays.asList(1, 2, 3), a.collect(Collectors.toList()));
+        assertEquals(Arrays.asList(1, 2, 3), a.collect(Collectors.toList()).join());
     }
 
     @Test
     void merge() {
-        assertEquals(Arrays.asList(1, 2, 3, 4, 5, 6), PList.merge(a, b).collect(Collectors.toList()));
+        assertEquals(Arrays.asList(1, 2, 3, 4, 5, 6), PList.concat(a, b).collect(Collectors.toList()).join());
     }
 
     @Test
     void flatmap() {
-        assertEquals(Arrays.asList(1, 2, 3, 4, 5, 6), c.flatmap(Function.identity()).collect(Collectors.toList()));
+        assertEquals(Arrays.asList(1, 2, 3, 4, 5, 6), c.flatmap(Function.identity()).collect(Collectors.toList()).join());
     }
 
     @Test
     void filter() {
-        assertEquals(Arrays.asList(1,3), a.filter(value -> value != 2).collect(Collectors.toList()));
+        assertEquals(Arrays.asList(1,3), a.filter(value -> Promise.just(value != 2)).collect(Collectors.toList()).join());
     }
 
     @Test
@@ -60,8 +62,8 @@ class LListTest {
         List<Integer> actual = new ArrayList<>();
         a.traverse(value -> {
             actual.add(value);
-            return value < 2;
-        });
+            return Promise.just(value < 2);
+        }).join();
         assertEquals(Arrays.asList(1,2), actual);
     }
 
@@ -80,7 +82,23 @@ class LListTest {
     // }
 
     @Test
+    void resolve() {
+        List<Integer> actual = new ArrayList<>();
+        a.map(i -> {
+            actual.add(i);
+            return i;
+        }).resolve().join();
+
+        assertEquals(Arrays.asList(1, 2, 3), actual);
+    }
+
+    @Test
     void contains() {
-        assertTrue(a.contains(3));
+        assertTrue(a.contains(3).join());
+    }
+
+    @Test
+    void any() {
+        assertTrue(a.any(i -> Promise.just(i == 2)).join());
     }
 }

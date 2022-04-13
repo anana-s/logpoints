@@ -1,5 +1,9 @@
+#!/bin/bash
+set -e
+
 mkdir -p target/lib
-cp target/*.jar target/dependency/*.jar target/dependency/lib/
+cp target/*.jar target/dependency/*.jar target/lib/
+export LOGPOINTS_HOME="target"
 
 ./logpoints serve \
     --prepend \

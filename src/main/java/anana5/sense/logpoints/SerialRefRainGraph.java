@@ -3,9 +3,8 @@ package anana5.sense.logpoints;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 import java.util.Stack;
-import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
 import anana5.graph.Graph;
@@ -25,9 +24,8 @@ public class SerialRefRainGraph implements Graph<SerialRef> {
         this.roots = null;
     }
 
-    public void traverse(Set<SerialRef> seen, SerialRef root, BiConsumer<SerialRef, SerialRef> consumer) {
+    public void traverse(SerialRef root, BiFunction<SerialRef, SerialRef, Boolean> consumer) {
         Stack<Tuple<SerialRef, SerialRef>> stack = new Stack<>();
-        seen.add(root);
         for (SerialRef target : from(root)) {
             stack.push(Tuple.of(root, target));
         }
@@ -35,16 +33,11 @@ public class SerialRefRainGraph implements Graph<SerialRef> {
             var edge = stack.pop();
             var source = edge.fst();
             var target = edge.snd();
-            if (target.sentinel()) {
+            if (!consumer.apply(source, target)) {
                 continue;
             }
-            consumer.accept(source, target);
-            if (seen.contains(target) || target.sentinel()) {
-                continue;
-            }
-            seen.add(source);
-            for (var next : from(source)) {
-                stack.push(Tuple.of(source, next));
+            for (var next : from(target)) {
+                stack.push(Tuple.of(target, next));
             }
         }
     }
@@ -57,14 +50,18 @@ public class SerialRefRainGraph implements Graph<SerialRef> {
 
     public HashSet<SerialRef> roots() {
         if (roots == null) {
-            roots = rain.unfix().map(this::visit).collect(Collectors.toCollection(HashSet::new));
+            roots = rain.unfix().map(this::visit).collect(Collectors.toCollection(HashSet::new)).join();
         }
         return roots;
     }
 
     @Override
     public HashSet<SerialRef> from(SerialRef source) {
-        return memo.get(source).unfix().map(this::visit).collect(Collectors.toCollection(HashSet::new));
+        if (!memo.containsKey(source)) {
+            throw new UnsupportedOperationException("value not yet reached");
+        }
+        return memo.get(source).unfix().map(this::visit).collect(Collectors.toCollection(HashSet::new)).join();
+
     }
 
     @Override

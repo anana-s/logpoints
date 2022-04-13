@@ -1,27 +1,26 @@
 package anana5.sense.logpoints;
 
+import java.io.Serializable;
 import java.util.Arrays;
 
-public class SerialRef implements anana5.util.Ref<String> {
+import anana5.sense.logpoints.Box.Ref;
+import soot.jimple.Stmt;
+
+public class SerialRef implements anana5.sense.logpoints.Box.Ref, Serializable {
     private final byte[] hash;
     private final String serial;
     private final boolean recursive;
-    private final boolean isReturn;
+    private final boolean returns;
 
     public SerialRef(Box.Ref ref) {
         this.hash = ref.hash();
         this.serial = ref.toString();
         this.recursive = ref.recursive();
-        this.isReturn = LogPoints.isReturn(ref.get());
+        this.returns = ref.returns();
     }
 
     public byte[] hash() {
         return hash;
-    }
-
-    @Override
-    public String get() {
-        return serial;
     }
 
     @Override
@@ -34,7 +33,7 @@ public class SerialRef implements anana5.util.Ref<String> {
     }
 
     public boolean returns() {
-        return isReturn;
+        return returns;
     }
 
     public boolean sentinel() {
@@ -59,5 +58,16 @@ public class SerialRef implements anana5.util.Ref<String> {
     @Override
     public int hashCode() {
         return Arrays.hashCode(hash);
+    }
+
+    @Override
+    public Stmt get() {
+        throw new UnsupportedOperationException("serial ref does contain the actual stmt");
+    }
+
+    @Override
+    public Ref copy(Box box) {
+        // TODO Auto-generated method stub
+        return null;
     }
 }

@@ -1,6 +1,7 @@
 package anana5.util;
 
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.function.BiFunction;
@@ -58,20 +59,22 @@ public class PList<T> implements Iterable<T> {
         return PList.cons(item, this);
     }
 
-    public T head() {
-        var maybe = unfix.map(listF -> listF.match(() -> Maybe.<T>nothing(), (t, f) -> Maybe.just(t))).join();
-        if (!maybe.check()) {
-            throw new NoSuchElementException();
-        }
-        return maybe.get();
+    public Promise<T> head() {
+        return unfix.map(listF -> listF.match(() -> Maybe.<T>nothing(), (t, f) -> Maybe.just(t))).map(maybe -> {
+            if (!maybe.check()) {
+                throw new NoSuchElementException();
+            }
+            return maybe.get();
+        });
     }
 
     public PList<T> tail() {
-        var maybe = unfix.map(listF -> listF.match(() -> Maybe.<PList<T>>nothing(), (t, f) -> Maybe.just(f))).join();
-        if (!maybe.check()) {
-            throw new NoSuchElementException();
-        }
-        return maybe.get();
+        return PList.bind(unfix.map(listF -> listF.match(() -> Maybe.<PList<T>>nothing(), (t, f) -> Maybe.just(f))).map(maybe -> {
+            if (!maybe.check()) {
+                throw new NoSuchElementException();
+            }
+            return maybe.get();
+        }));
     }
 
     public <R> PList<R> map(Function<T, R> func) {
@@ -91,7 +94,7 @@ public class PList<T> implements Iterable<T> {
     }
 
     @SafeVarargs
-    public static <R> PList<R> merge(PList<R>... lists) {
+    public static <R> PList<R> concat(PList<R>... lists) {
         var llist = lists[lists.length - 1];
         for (int i = lists.length - 2; i >= 0; i--) {
             llist = lists[i].concat(llist);
@@ -99,17 +102,15 @@ public class PList<T> implements Iterable<T> {
         return llist;
     }
 
-    public void traverse(Function<T, Boolean> consumer) {
-        _traverse(consumer).join();
-    }
-
-    public Promise<Void> _traverse(Function<T, Boolean> consumer) {
+    public Promise<Void> traverse(Function<T, ? extends Promise<? extends Boolean>> consumer) {
         return unfix.then(listF -> listF.match(() -> Promise.<Void>nil(), (head, tail) -> {
-            if (consumer.apply(head)) {
-                return tail._traverse(consumer);
-            } else {
-                return Promise.nil();
-            }
+            return consumer.apply(head).then(b -> {
+                if (b) {
+                    return tail.traverse(consumer);
+                } else {
+                    return Promise.nil();
+                }
+            });
         }));
     }
 
@@ -117,21 +118,18 @@ public class PList<T> implements Iterable<T> {
     //     return fold(p -> p.then(listF -> listF.match(() -> Promise.lazy(), (t, f) -> folder.apply(Promise.lazy().then($ -> consumer.apply(t)), f))));
     // }
 
-    public <A, R> R collect(Collector<T, A, R> collector) {
-        return collector.finisher().apply(
-            foldr(collector.supplier().get(), (a, t) -> {
-                collector.accumulator().accept(a, t);
-                return a;
-            })
-        );
+    public <A, R> Promise<R> collect(Collector<T, A, R> collector) {
+        return foldr(Promise.just(collector.supplier().get()), (a, t) -> {
+            return a.effect(acc -> collector.accumulator().accept(acc, t));
+        }).map(a -> collector.finisher().apply(a));
     }
 
-    public <R> R foldr(R r, BiFunction<R, T, R> func) {
-        return unfix.map(listF -> listF.match(() -> r, (t, next) -> next.foldr(func.apply(r, t), func))).join();
+    public <R> Promise<R> foldr(Promise<R> r, BiFunction<Promise<R>, T, Promise<R>> func) {
+        return unfix.then(listF -> listF.match(() -> r, (t, next) -> next.foldr(func.apply(r, t), func)));
     }
 
-    public <R> R foldl(R r, BiFunction<T, R, R> func) {
-        return unfix.map(listF -> listF.match(() -> r, (t, next) -> func.apply(t, next.foldl(r, func)))).join();
+    public <R> Promise<R> foldl(Promise<R> r, BiFunction<T, Promise<R>, Promise<R>> func) {
+        return unfix.then(listF -> listF.match(() -> r, (t, next) -> func.apply(t, next.foldl(r, func))));
     }
 
     public <R> R fold(Function<Promise<ListF<T, R>>, R> func) {
@@ -139,51 +137,55 @@ public class PList<T> implements Iterable<T> {
     }
 
     public static <T> PList<T> bind(Promise<PList<T>> promise) {
-        return new PList<>(promise.then(lList -> lList.unfix));
+        return PList.fix(promise.then(lList -> lList.unfix));
     }
 
     public static <T> PList<T> bind(PList<Promise<T>> promises) {
         return PList.bind(promises.unfix.map(listF -> listF.match(() -> PList.<T>nil(), (p, next) -> PList.fix(p.map(t -> ListF.cons(t, PList.bind(next)))))));
     }
 
-    public Boolean empty() {
-        return unfix.map(listF -> listF.match(() -> true, (t, f) -> false)).join();
+    public Promise<Boolean> empty() {
+        return unfix.map(listF -> listF.match(() -> true, (t, f) -> false));
     }
 
-    public PList<T> filter(Function<? super T, ? extends Boolean> func) {
-        return _filter(func).join();
+    public PList<T> filter(Function<? super T, ? extends Promise<? extends Boolean>> func) {
+        return PList.<T>bind(unfix.then(listF -> listF.match(() -> Promise.just(PList.<T>of()), (t, next) -> {
+            return func.apply(t).map(b -> {
+                if (b) {
+                    return PList.cons(t, next.filter(func));
+                } else {
+                    return next.filter(func);
+                }
+            });
+        })));
     }
 
-    public Promise<PList<T>> _filter(Function<? super T, ? extends Boolean> func) {
-        return unfix.then(listF -> listF.match(() -> Promise.just(PList.<T>of()), (t, next) -> {
-            if (func.apply(t)) {
-                return next._filter(func).then(tail -> {
-                    return Promise.just(PList.cons(t, tail));
-                });
-            } else {
-                return next._filter(func);
-            }
-        }));
+    public Promise<Boolean> any(Function<? super T, ? extends Promise<? extends Boolean>> func) {
+        return filter(func).empty().map(b -> !b);
     }
 
-    public boolean any(Function<? super T, ? extends Boolean> func) {
-        return !filter(func).empty();
+    public Promise<PList<T>> resolve() {
+        return foldl(Promise.just(this), (head, acc) -> acc);
     }
 
-    public LList<T> resolve() {
-        return foldl(LList.of(), (head, acc) -> LList.cons(head, acc));
-    }
-
-    public boolean contains(T t) {
-        return _contains(t).join();
-    }
-
-    private Promise<Boolean> _contains(T t) {
+    public Promise<Boolean> contains(T t) {
         return unfix.<Boolean>then(listF -> listF.match(() -> Promise.just(false), (head, tail) -> {
             if (head.equals(t)) {
                 return Promise.just(true);
             } else {
-                return tail._contains(t);
+                return tail.contains(t);
+            }
+        }));
+    }
+
+    public PList<T> unique() {
+        var seen = new HashSet<T>();
+        return filter(t -> Promise.lazy(() -> {
+            if (seen.contains(t)) {
+                return false;
+            } else {
+                seen.add(t);
+                return true;
             }
         }));
     }
@@ -202,7 +204,7 @@ public class PList<T> implements Iterable<T> {
 
         @Override
         public boolean hasNext() {
-            return !cur.empty();
+            return !cur.empty().join();
         }
 
         @Override

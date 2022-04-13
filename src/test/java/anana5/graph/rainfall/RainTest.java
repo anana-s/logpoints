@@ -7,6 +7,7 @@ import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
 import anana5.util.PList;
+import anana5.util.Promise;
 
 public class RainTest {
 
@@ -30,13 +31,13 @@ public class RainTest {
     @Test
     void mergeEmtpy() {
         Rain<Integer> rain = Rain.merge(PList.of());
-        Integer pActual = rain.<Integer>fold(drops -> drops.foldr(0, (acc, drop) -> drop.next() + drop.get() + acc));
-        assertEquals(0, pActual);
+        Promise<Integer> pActual = rain.<Promise<Integer>>fold(drops -> drops.foldr(Promise.just(0), (acc, drop) -> acc.then(a -> drop.next().map(n -> n + drop.get() + a))));
+        assertEquals(0, pActual.join());
     }
 
     @Test
     void map() {
-        var actual = graph.get().map(v -> v + 1).<Integer>fold(drops -> drops.foldr(0, (acc, drop) -> drop.next() + drop.get() + acc));
-        assertEquals(31, actual);
+        var actual = graph.get().map(v -> v + 1).<Promise<Integer>>fold(drops -> drops.foldr(Promise.just(0), (acc, drop) -> acc.then(a -> drop.next().map(n -> n + drop.get() + a))));
+        assertEquals(31, actual.join());
     }
 }

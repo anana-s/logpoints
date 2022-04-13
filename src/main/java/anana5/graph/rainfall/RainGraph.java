@@ -21,12 +21,12 @@ public class RainGraph<T> implements Graph<T> {
     }
 
     public Set<T> roots() {
-        return roots.map(this::visit).collect(Collectors.toSet());
+        return roots.map(this::visit).collect(Collectors.toSet()).join();
     }
 
     @Override
     public Set<T> from(T source) {
-        return sources.get(source).map(this::visit).collect(Collectors.toSet());
+        return sources.get(source).map(this::visit).collect(Collectors.toSet()).join();
     }
 
     @Override

@@ -13,6 +13,7 @@ import java.util.concurrent.Executors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import anana5.sense.logpoints.LogPoints.EntrypointNotFoundException;
 import net.sourceforge.argparse4j.inf.Namespace;
 
 public class Server implements Callable<Void>, AutoCloseable {
@@ -28,7 +29,13 @@ public class Server implements Callable<Void>, AutoCloseable {
     }
 
     public static void main(String[] args) {
-        Namespace ns = OnlineGraphCLI.parse(args);
+        Namespace ns;
+        try {
+            ns = OnlineGraphCLI.parse(args);
+        } catch (EntrypointNotFoundException e) {
+            log.error("entrypoint not found: {}", e.name());
+            return;
+        }
         ExecutorService executor = Executors.newCachedThreadPool();
 
         // try (var printer = new DotPrinter(System.out)) {

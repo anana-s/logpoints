@@ -1,5 +1,6 @@
 package anana5.sense.logpoints;
 
+import java.io.EOFException;
 import java.io.IOException;
 import java.util.HashSet;
 
@@ -34,6 +35,9 @@ public class Print {
         try (var client = RemoteSerialRefGraph.connect(ns.getString("address")); var printer = new DotPrinter(System.out)) {
             var seen = new HashSet<SerialRef>();
             for (var root : client.roots()) {
+                if (root.sentinel() || seen.contains(root)) {
+                    continue;
+                }
                 printer.discover(root);
                 seen.add(root);
                 client.traverse(root, (source, target) -> {
@@ -48,6 +52,8 @@ public class Print {
                     return true;
                 });
             }
+        } catch (EOFException e) {
+            // ignore
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

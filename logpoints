@@ -3,7 +3,7 @@
 set -e
 
 LOGPOINTS_HOME="${LOGPOINTS_HOME:-"$(dirname "$0")/.."}"
-LOGPOINTS_JVM_OPTS="${LOGPOINTS_JVM_OPTS:-"-Xmx16g -Xms16g -XX:UseSerialGC"}"
+LOGPOINTS_JVM_OPTS="${LOGPOINTS_JVM_OPTS:-"-Xmx64g -Xss1g -XX:+UseSerialGC"}"
 
 if [ -z "$1" ]; then
     echo "usage: logpoints <serve|print|count|ping> [options]"
@@ -31,4 +31,4 @@ esac
 
 shift
 
-exec java -Dorg.slf4j.simpleLogger.defaultLogLevel=trace -XX:+UseSerialGC "$LOGPOINTS_JVM_OPTS" -cp "$LOGPOINTS_HOME"'/lib/*' $LOGPOINTS_CLASS "$@"
+exec java -Dorg.slf4j.simpleLogger.defaultLogLevel=trace $LOGPOINTS_JVM_OPTS -cp "$LOGPOINTS_HOME"'/lib/*' $LOGPOINTS_CLASS "$@"

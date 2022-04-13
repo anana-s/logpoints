@@ -41,7 +41,15 @@ public class LList<T> implements Iterable<T> {
     }
 
     public static <T> LList<T> from(Iterable<T> ts) {
-        return PList.from(ts).resolve();
+        return LList.from(ts.iterator());
+    }
+
+    public static <T> LList<T> from(Iterator<T> ts) {
+        if (!ts.hasNext()) {
+            return LList.nil();
+        }
+
+        return LList.cons(ts.next(), from(ts));
     }
 
     public static <T> LList<T> nil() {

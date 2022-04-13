@@ -48,6 +48,14 @@ public class Example {
         Example o = new Example();
         o.add(phrase -> logger.info("call {} 1", phrase));
         o.add(phrase -> logger.info("call {} 2", phrase));
+        o.add(phrase -> String.format(phrase));
+        o.add(phrase -> String.format(phrase+""));
+        o.add(phrase -> String.format(phrase+"a"));
+        o.add(phrase -> String.format(phrase+"b"));
+        o.add(phrase -> String.format(phrase+"c"));
+        o.add(phrase -> String.format(phrase+"d"));
+        o.add(phrase -> String.format(phrase+"e"));
+        o.add(phrase -> String.format(phrase+"f"));
         if (args.length != 0) {
             logger.error("wrong number of args");
             System.exit(1);

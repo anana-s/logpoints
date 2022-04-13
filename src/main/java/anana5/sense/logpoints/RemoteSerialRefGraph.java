@@ -1,7 +1,5 @@
 package anana5.sense.logpoints;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -29,8 +27,8 @@ public class RemoteSerialRefGraph implements Graph<SerialRef>, AutoCloseable {
 
     private RemoteSerialRefGraph(String host, int port) throws IOException {
         this.socket = new Socket(host, port);
-        this.out = new ObjectOutputStream(new BufferedOutputStream(socket.getOutputStream()));
-        this.in = new ObjectInputStream(new BufferedInputStream(socket.getInputStream()));
+        this.out = new ObjectOutputStream(socket.getOutputStream());
+        this.in = new ObjectInputStream(socket.getInputStream());
         this.sources = new HashMap<>();
         this.roots = null;
     }
