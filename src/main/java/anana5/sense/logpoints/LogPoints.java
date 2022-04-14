@@ -217,11 +217,21 @@ public class LogPoints {
     }
 
     static Promise<Rain<Ref>> merge(PList<Promise<Rain<Ref>>> promises) {
-        return promises.foldl(Promise.just(Rain.of()), (promise, acc) -> {
-            return promise.then(rain -> {
-                return acc.map(accRain -> {
-                    return Rain.fix(rain.unfix().concat(accRain.unfix()));
+        return promises.foldl(Promise.just(PList.<Drop<Ref, Rain<Ref>>>of()), (promise, acc) -> {
+            return promise.then(u -> {
+                return acc.then(v -> {
+                    return Promise.just(u.unfix().concat(v));
                 });
+            });
+        }).map(Rain::fix);
+    }
+
+    static Promise<Rain<Ref>> reduce(Rain<Ref> rain) {
+        var memo = new HashMap<Stmt, PList<Drop<Ref, Rain<Ref>>>>();
+        rain.unfix().foldl(Promise.nil(), (drop, promise) -> {
+            var ref = drop.get();
+            memo.compute(ref.get(), (stmt, next) -> {
+                return drop.next().unfix().concat(next);
             });
         });
     }
