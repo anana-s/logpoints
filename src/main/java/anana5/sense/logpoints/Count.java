@@ -33,7 +33,7 @@ public class Count {
                         }
                         vertices.add(root);
                         graph.traverse(root, (src, tgt) -> {
-                            if (tgt.sentinel() || vertices.contains(tgt)) {
+                            if (tgt.returns() || tgt.recursive() || tgt.sentinel() || vertices.contains(tgt)) {
                                 return false;
                             }
                             vertices.add(tgt);

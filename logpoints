@@ -3,7 +3,7 @@
 set -e
 
 LOGPOINTS_HOME="${LOGPOINTS_HOME:-"$(dirname "$0")/.."}"
-LOGPOINTS_JVM_OPTS="${LOGPOINTS_JVM_OPTS:-"-Xmx64g -Xss1g -XX:+UseSerialGC"}"
+LOGPOINTS_JVM_OPTS="${LOGPOINTS_JVM_OPTS:-"-Xmx4g"}"
 
 if [ -z "$1" ]; then
     echo "usage: logpoints <serve|print|count|ping> [options]"

@@ -1,9 +1,7 @@
 package anana5.sense.logpoints;
 
-import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.Objects;
 
 import soot.SootMethod;
 import soot.jimple.Stmt;
@@ -42,21 +40,96 @@ public class Box implements anana5.util.Ref<SootMethod> {
         return other.copy(this);
     }
 
+
+    private static Stmt retStmt = new JReturnVoidStmt();
+    private static Ref retRef = new ReturnRef();
     public static Ref returns() {
-        return new ReturnRef();
+        return retRef;
+    }
+
+    public static Ref sentinel(boolean recursive) {
+        return new SentinelRef(recursive);
     }
 
     public interface Ref extends anana5.util.Ref<Stmt> {
         boolean returns();
         boolean recursive();
         Ref copy(Box box);
-        default boolean sentinel() {
-            return recursive() || returns();
+        boolean sentinel();
+    }
+
+    private static abstract class BoxRef implements Ref {
+        private final byte[] hash;
+
+        private BoxRef() {
+            this.hash = probe();
+        }
+
+        @Override
+        public byte[] hash() {
+            return this.hash;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj == this) {
+                return true;
+            }
+            if (obj == null) {
+                return false;
+            }
+            if (obj.getClass() != getClass()) {
+                return false;
+            }
+            BoxRef other = (BoxRef)obj;
+            return Arrays.equals(hash, other.hash);
+        }
+
+        @Override
+        public int hashCode() {
+            return Arrays.hashCode(hash);
         }
     }
 
-    private class CopyRef implements Ref {
-        private final byte[] hash;
+    private static class SentinelRef extends BoxRef {
+        private final boolean recursive;
+
+        public SentinelRef(boolean recursive) {
+            this.recursive = recursive;
+        }
+
+        @Override
+        public Stmt get() {
+            return null;
+        }
+
+        @Override
+        public boolean returns() {
+            return false;
+        }
+
+        @Override
+        public boolean recursive() {
+            return recursive;
+        }
+
+        @Override
+        public boolean sentinel() {
+            return true;
+        }
+
+        @Override
+        public Ref copy(Box box) {
+            return Box.sentinel(recursive);
+        }
+
+        @Override
+        public String toString() {
+            return "";
+        }
+    }
+
+    private static class CopyRef extends BoxRef {
         private final Box base;
         private final Stmt stmt;
         private final boolean recursive;
@@ -65,7 +138,6 @@ public class Box implements anana5.util.Ref<SootMethod> {
             this.base = base;
             this.stmt = stmt;
             this.recursive = recursive;
-            this.hash = probe();
         }
 
         @Override
@@ -79,58 +151,31 @@ public class Box implements anana5.util.Ref<SootMethod> {
         }
 
         @Override
+        public boolean sentinel() {
+            return false;
+        }
+
+        @Override
         public Ref copy(Box box) {
-            return box.new CopyRef(base, get(), recursive() || base.equals(box));
+            return new CopyRef(base, stmt, recursive() || base.equals(box));
         }
 
         @Override
         public Stmt get() {
             return stmt;
-        }
-
-        @Override
-        public byte[] hash() {
-            return hash;
         }
 
         @Override
         public String toString() {
             return format(stmt);
         }
-
-        @Override
-        public boolean equals(Object obj) {
-            if (obj == this) {
-                return true;
-            }
-            if (obj == null) {
-                return false;
-            }
-            if (obj.getClass() != getClass()) {
-                return false;
-            }
-            CopyRef other = (CopyRef) obj;
-            return Arrays.equals(hash(), other.hash());
-        }
-
-        @Override
-        public int hashCode() {
-            return Arrays.hashCode(hash());
-        }
     }
 
-    private class SimpleRef implements Ref {
-        private final byte[] hash;
+    private class SimpleRef extends BoxRef {
         private final Stmt stmt;
 
         private SimpleRef(Stmt stmt) {
             this.stmt = stmt;
-            this.hash = probe();
-        }
-
-        @Override
-        public byte[] hash() {
-            return this.hash;
         }
 
         @Override
@@ -138,11 +183,18 @@ public class Box implements anana5.util.Ref<SootMethod> {
             return stmt;
         }
 
+        @Override
         public boolean returns() {
             return LogPoints.isReturn(stmt);
         }
 
+        @Override
         public boolean recursive() {
+            return false;
+        }
+
+        @Override
+        public boolean sentinel() {
             return false;
         }
 
@@ -152,46 +204,15 @@ public class Box implements anana5.util.Ref<SootMethod> {
         }
 
         @Override
-        public boolean equals(Object obj) {
-            if (obj == null) {
-                return false;
-            }
-            if (obj == this) {
-                return true;
-            }
-            if (obj.getClass() != getClass()) {
-                return false;
-            }
-            SimpleRef other = (SimpleRef) obj;
-            return Arrays.equals(hash(), other.hash());
-        }
-
-        @Override
-        public int hashCode() {
-            return Arrays.hashCode(hash());
-        }
-
-        @Override
         public Ref copy(Box box) {
-            return box.new CopyRef(Box.this, get(), Box.this.equals(box));
+            return new CopyRef(Box.this, stmt, Box.this.equals(box));
         }
     }
 
-    private static class ReturnRef implements Ref {
-        private final byte[] hash;
-
-        private ReturnRef() {
-            this.hash = new byte[]{};
-        }
-
-        @Override
-        public byte[] hash() {
-            return this.hash;
-        }
-
+    private static class ReturnRef extends BoxRef {
         @Override
         public Stmt get() {
-            return new JReturnVoidStmt();
+            return retStmt;
         }
 
         @Override
@@ -201,6 +222,11 @@ public class Box implements anana5.util.Ref<SootMethod> {
 
         @Override
         public boolean recursive() {
+            return false;
+        }
+
+        @Override
+        public boolean sentinel() {
             return false;
         }
 
@@ -210,27 +236,8 @@ public class Box implements anana5.util.Ref<SootMethod> {
         }
 
         @Override
-        public boolean equals(Object obj) {
-            if (obj == null) {
-                return false;
-            }
-            if (obj == this) {
-                return true;
-            }
-            if (obj.getClass() != this.getClass()) {
-                return false;
-            }
-            return true;
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash();
-        }
-
-        @Override
         public Ref copy(Box box) {
-            return this;
+            return Box.returns();
         }
     }
 

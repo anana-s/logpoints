@@ -91,8 +91,7 @@ public class Promise<T> implements Computation<T> {
             } catch (ExecutionException e) {
                 if (e.getCause() instanceof Unresolved) {
                     if (pending()) {
-                        super.state = State.REJECTED;
-                        throw new ExecutionException(new RecursiveDependencyException(c));
+                        throw e;
                     }
                     super.state = State.PENDING;
                     return Continuation.accept(c, k.map(s -> {
