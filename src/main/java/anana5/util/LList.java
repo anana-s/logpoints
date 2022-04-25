@@ -7,6 +7,8 @@ import java.util.NoSuchElementException;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.stream.Collector;
+import java.util.stream.Stream;
 
 public class LList<T> implements Iterable<T> {
     private final ListF<T, LList<T>> unfix;
@@ -68,12 +70,14 @@ public class LList<T> implements Iterable<T> {
         return unfix.match(() -> false, (a, f) -> a.equals(t) || f.contains(t));
     }
 
-    public Maybe<T> head() {
-        return unfix.match(() -> Maybe.nothing(), (a, f) -> Maybe.just(a));
+    public T head() {
+        return unfix.match(() -> {
+            throw new NoSuchElementException();
+        }, (a, f) -> a);
     }
 
-    public Maybe<LList<T>> tail() {
-        return unfix.match(() -> Maybe.nothing(), (a, f) -> Maybe.just(f));
+    public LList<T> tail() {
+        return unfix.match(() -> this, (a, f) -> f);
     }
 
     public boolean empty() {
@@ -96,8 +100,8 @@ public class LList<T> implements Iterable<T> {
     public void traverse(Consumer<T> visitor) {
         var path = this;
         while (!path.empty()) {
-            visitor.accept(path.head().get());
-            path = path.tail().get();
+            visitor.accept(path.head());
+            path = path.tail();
         }
     }
 
@@ -133,11 +137,15 @@ public class LList<T> implements Iterable<T> {
 
     }
 
-    public List<? extends T> collect() {
-        List<T> list = new ArrayList<>();
-        for (T t : this) {
-            list.add(t);
-        }
-        return list;
+    public Stream<T> stream() {
+        return Stream.iterate(this, LList::tail).takeWhile(llist -> !llist.empty()).map(LList::head);
+    }
+
+    public <A, R> R collect(Collector<? super T, A, R> collector) {
+        return stream().collect(collector);
+    }
+
+    public static <S, T> LList<T> unfold(S s, Function<S, ListF<T, S>> func) {
+        return LList.fix(func.apply(s).fmap(r -> unfold(r, func)));
     }
 }
