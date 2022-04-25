@@ -4,6 +4,7 @@ set -e
 mkdir -p target/lib
 cp target/*.jar target/dependency/*.jar target/lib/
 export LOGPOINTS_HOME="target"
+export LOGPOINTS_JVM_OPTS="-Xmx64g -Xss1g -XX:+UseSerialGC"
 
 ./logpoints serve \
     --prepend \
@@ -14,4 +15,4 @@ export LOGPOINTS_HOME="target"
     --tag Logger.warn \
     --tag Logger.error \
     --tag println \
-    org.apache.hadoop.hdfs.server.namenode.NameNode
+    org.apache.hadoop.hdfs.server.namenode.NameNode.main

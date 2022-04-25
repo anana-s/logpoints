@@ -44,7 +44,7 @@ class LListTest {
 
     @Test
     void merge() {
-        assertEquals(Arrays.asList(1, 2, 3, 4, 5, 6), PList.concat(a, b).collect(Collectors.toList()).join());
+        assertEquals(Arrays.asList(1, 2, 3, 4, 5, 6), PList.merge(a, b).collect(Collectors.toList()).join());
     }
 
     @Test

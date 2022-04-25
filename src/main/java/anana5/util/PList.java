@@ -77,12 +77,12 @@ public class PList<T> implements Iterable<T> {
         }));
     }
 
-    public <R> PList<R> map(Function<T, R> func) {
+    public <R> PList<R> map(Function<? super T, ? extends R> func) {
         return PList.bind(unfix.map(listF -> listF.match(() -> PList.nil(), (t, f) -> PList.cons(func.apply(t), f.map(func)))));
         //return LList.bind(foldl(new LList<>(), (t, rs) -> func.apply(t).map(t$ -> new LList<R>(t$, rs))));
     }
 
-    public <R> PList<R> flatmap(Function<T, PList<R>> func) {
+    public <R> PList<R> flatmap(Function<? super T, PList<R>> func) {
         return PList.bind(unfix.map(listF -> listF.match(() -> PList.nil(), (t, f) -> func.apply(t).concat(f.flatmap(func)))));
         //return LList.bind(this.map(func).foldl(new LList<>(), (llist, acc) -> Promise.just(llist.concat(acc))));
     }
@@ -94,7 +94,7 @@ public class PList<T> implements Iterable<T> {
     }
 
     @SafeVarargs
-    public static <R> PList<R> concat(PList<R>... lists) {
+    public static <R> PList<R> merge(PList<R>... lists) {
         var llist = lists[lists.length - 1];
         for (int i = lists.length - 2; i >= 0; i--) {
             llist = lists[i].concat(llist);
@@ -118,7 +118,7 @@ public class PList<T> implements Iterable<T> {
     //     return fold(p -> p.then(listF -> listF.match(() -> Promise.lazy(), (t, f) -> folder.apply(Promise.lazy().then($ -> consumer.apply(t)), f))));
     // }
 
-    public <A, R> Promise<R> collect(Collector<T, A, R> collector) {
+    public <A, R> Promise<R> collect(Collector<? super T, A, R> collector) {
         return foldr(Promise.just(collector.supplier().get()), (a, t) -> {
             return a.effect(acc -> collector.accumulator().accept(acc, t));
         }).map(a -> collector.finisher().apply(a));

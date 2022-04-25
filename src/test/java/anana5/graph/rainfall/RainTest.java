@@ -2,6 +2,8 @@ package anana5.graph.rainfall;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.function.Supplier;
 
 import org.junit.jupiter.api.Test;
@@ -37,7 +39,13 @@ public class RainTest {
 
     @Test
     void map() {
-        var actual = graph.get().map(v -> v + 1).<Promise<Integer>>fold(drops -> drops.foldr(Promise.just(0), (acc, drop) -> acc.then(a -> drop.next().map(n -> n + drop.get() + a))));
+        var asdf = new ArrayList<>();
+        var actual = graph.get().map(v -> {
+            asdf.add(v);
+            return v + 1;
+        }).<Promise<Integer>>fold(drops -> drops.foldr(Promise.just(0), (acc, drop) -> acc.then(a -> drop.next().map(n -> n + drop.get() + a))));
+        assertEquals(Arrays.asList(), asdf);
         assertEquals(31, actual.join());
+        assertEquals(Arrays.asList(1,2,3,4,5,4,5), asdf);
     }
 }

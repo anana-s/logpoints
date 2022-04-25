@@ -3,7 +3,7 @@ package anana5.util;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public interface Maybe<T> {
+public interface Maybe<T> extends Ref<T> {
     <R> MaybeMatch<T, R> match();
     <R> R match(Supplier<R> nil, Function<T, R> cons);
     boolean check();

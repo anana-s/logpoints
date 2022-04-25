@@ -1,18 +1,20 @@
 package anana5.sense.logpoints;
 
+import java.io.Serializable;
+
 import soot.tagkit.AttributeValueException;
 import soot.tagkit.Tag;
 
-public class SourceMapTag implements Tag {
+public class SourceMapTag implements Tag, Serializable {
 
-    private String sourceName;
-    private int lineNumber;
-    private int columnNumber;
+    private final String methodName;
+    private final String sourceFile;
+    private final int  lineNumber;
 
-    public SourceMapTag(String sourceName, int lineNumber, int columnNumber) {
-        this.sourceName = sourceName;
+    public SourceMapTag(String methodName, String sourceFile, int lineNumber) {
+        this.methodName = methodName;
+        this.sourceFile = sourceFile;
         this.lineNumber = lineNumber;
-        this.columnNumber = columnNumber;
     }
 
     @Override
@@ -25,9 +27,21 @@ public class SourceMapTag implements Tag {
         return toString().getBytes();
     }
 
+    public String method() {
+        return methodName;
+    }
+
+    public String source() {
+        return sourceFile;
+    }
+
+    public int line() {
+        return lineNumber;
+    }
+
     @Override
     public String toString() {
-        return sourceName + ":" + lineNumber + ":" + columnNumber;
+        return String.format("%s(%s:%d)", methodName, sourceFile, lineNumber);
     }
     
 }

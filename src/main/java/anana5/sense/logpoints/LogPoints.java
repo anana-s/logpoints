@@ -38,6 +38,8 @@ import soot.jimple.Stmt;
 import soot.jimple.internal.JReturnVoidStmt;
 import soot.jimple.toolkits.callgraph.CallGraph;
 import soot.options.Options;
+import soot.tagkit.LineNumberTag;
+import soot.tagkit.SourceFileTag;
 import soot.toolkits.graph.ExceptionalUnitGraph;
 
 public class LogPoints {
@@ -82,8 +84,8 @@ public class LogPoints {
         // cg options
         Options.v().setPhaseOption("cg.spark", "enabled:true");
         Options.v().setPhaseOption("cg.spark", "string-constants:true");
-        Options.v().setPhaseOption("cg", "safe-forname:true");
-        Options.v().setPhaseOption("cg", "safe-newinstance:true");
+        Options.v().setPhaseOption("cg", "safe-forname:false");
+        Options.v().setPhaseOption("cg", "safe-newinstance:false");
         Options.v().setPhaseOption("cg", "jdkver:11");
         Options.v().setPhaseOption("cg", "verbose:false");
         Options.v().setPhaseOption("cg", "all-reachable:false");
@@ -217,7 +219,7 @@ public class LogPoints {
 
     public synchronized SerialRefRainGraph graph() {
         if (graph == null) {
-            setGraph(new SerialRefRainGraph(Rain.bind(build())));
+            setGraph(new SerialRefRainGraph(build()));
         }
         return graph;
     }
@@ -226,20 +228,7 @@ public class LogPoints {
         setGraph(null);
     }
 
-    static Promise<Rain<Ref>> merge(PList<Promise<Rain<Ref>>> promises) {
-        return promises.foldl(Promise.just(PList.<Drop<Ref, Rain<Ref>>>of()), (promise, acc) -> {
-            return promise.then(u -> {
-                return acc.then(v -> {
-                    return Promise.just(u.unfix().concat(v));
-                });
-            });
-        }).map(Rain::fix);
-    }
-
-    protected final Promise<Rain<Box.Ref>> build() {
-        LocalDateTime start = LocalDateTime.now();
-        logger.debug("started at {} with trace: {}", start, trace);
-
+    protected synchronized final Rain<Box.Ref> build() {
         if (this.cg == null) {
             Scene.v().setEntryPoints(targets);
             Scene.v().loadNecessaryClasses();
@@ -247,97 +236,19 @@ public class LogPoints {
             this.cg = Scene.v().getCallGraph();
         }
 
-        return build(null, entrypoints(), new HashSet<>());
+        return Rain.bind(Promise.lazy(() -> build(null, entrypoints(), new HashSet<>())));
     }
 
-    // private final Rain<Box.Ref> postprocess(Rain<Box.Ref> rain, Map<Ref, Rain<Ref>> memo) {
-    //     return Rain.merge(rain.unfix().<Rain<Ref>>map(drop -> {
-    //         var ref = drop.get();
-    //         if (isReturn(ref.get())) {
-    //             return Rain.of();
-    //         }
-    //         if (memo.containsKey(ref)) {
-    //             return memo.get(ref);
-    //         }
-    //         var out = Rain.<Ref>of(Drop.of(ref, Rain.bind(Promise.lazy(() -> postprocess(drop.next(), memo)))));
-    //         memo.put(ref, out);
-    //         return out;
-    //     }));
-    // }
-
-    private final Promise<Rain<Box.Ref>> build(Stmt invoker, PList<SootMethod> methods, Set<SootMethod> strand) {
-        // build clinit first
-        // var cs = methods.filter(method -> method.getName().equals("<clinit>"));
-        var ms = methods.filter(method -> Promise.just(!method.getName().equals("<clinit>")));
-
-        // var cr = merge(cs.map(m -> build(invoker, m, strand)));
-        var mr = merge(ms.map(m -> build(invoker, m, strand)));
-
-        // if (logger.isTraceEnabled()) {
-        //     return Rain.bind(cr.resolve().then(resolvedCr -> {
-        //         var knot = Knot.tie(a -> connect(resolvedCr, Rain.bind(a)), b -> Rain.merge(mr, Rain.bind(b)));
-        //         return knot.snd();
-        //         // return Promise.just(Rain.merge(mr, connect(resolvedCr, mr)));
-        //     }));
-        // }
-
-        // var knot = Knot.tie(a -> connect(cr, Rain.bind(a)), b -> Rain.merge(mr, Rain.bind(b)));
-        // return Rain.bind(knot.snd());
-
-        return mr;
-    }
-
+    // annoying methods to be skipped
     static List<String> names = Arrays.asList(
         "hashCode",
         "equals"
     );
     static boolean skip(SootMethod method) {
         return !method.isConcrete() ||
-            method.getDeclaringClass().isLibraryClass() ||
+            // method.getDeclaringClass().isLibraryClass() ||
             names.contains(method.getName());
     }
-
-    private final Promise<Rain<Box.Ref>> build(Stmt invoker, SootMethod method, Set<SootMethod> strand) {
-        if (done.containsKey(method)) {
-            if (strand.contains(method)) {
-                logger.trace("{} added sentinel", format(method));
-                return Promise.just(Rain.of(Drop.of(Box.sentinel(true), done.get(method))));
-            }
-            logger.trace("{} loaded from cache", format(method));
-            return Promise.just(done.get(method));
-        }
-
-        logger.trace("{} loading", format(method));
-        var body = method.retrieveActiveBody();
-        var factory = new CFGFactory(body);
-        strand.add(method);
-        var rain = Rain.bind(factory.build(strand));
-        done.put(method, rain);
-        return rain.unfix().resolve().map(drops -> {
-            strand.remove(method);
-            return rain;
-        });
-    }
-
-    // protected static Promise<Rain<Ref>> resolve(Rain<Ref> rain) {
-    //     return resolve(rain, new HashSet<>()).map(v -> rain);
-    // }
-
-    // protected static Promise<Void> resolve(Rain<Ref> rain, Set<Ref> memo) {
-    //     return rain.unfix().<Promise<Void>>map(drop -> {
-    //         if (drop.get().sentinel() || memo.contains(drop.get())) {
-    //             return Promise.nil();
-    //         }
-
-    //         return resolve(drop.next(), memo);
-    //     }).foldl(Promise.nil(), (promise, resolved) -> {
-    //         return promise.then(u -> {
-    //             return resolved.then(v -> {
-    //                 return Promise.nil();
-    //             });
-    //         });
-    //     });
-    // }
 
     public final boolean match(Stmt stmt) {
         if (!stmt.containsInvokeExpr()) {
@@ -354,11 +265,47 @@ public class LogPoints {
         return false;
     }
 
+    private final Rain<Box.Ref> build(Stmt invoker, PList<SootMethod> methods, Set<SootMethod> strand) {
+        // build clinit first
+        // var cs = methods.filter(method -> method.getName().equals("<clinit>"));
+        var ms = methods.filter(method -> Promise.just(!method.getName().equals("<clinit>")));
+
+        var mr = Rain.merge(ms.map(m -> build(invoker, m, strand)));
+
+        return deduplicate(mr);
+    }
+
+    private final Rain<Box.Ref> build(Stmt invoker, SootMethod method, Set<SootMethod> strand) {
+
+        if (done.containsKey(method)) {
+            if (strand.contains(method)) {
+                logger.trace("{} added sentinel", format(method));
+                return Rain.of(Drop.of(Box.sentinel(true), done.get(method)));
+            } else {
+                logger.trace("{} loaded from cache", format(method));
+                return done.get(method);
+            }
+        }
+
+        logger.trace("{} loading", format(method));
+        var body = method.retrieveActiveBody();
+        var factory = new CFGFactory(body);
+
+        strand = new HashSet<>(strand);
+        strand.add(method);
+
+        var rain = factory.build(strand);
+        done.put(method, rain);
+        return rain;
+    }
+
     class CFGFactory {
         private final SootMethod method;
         private final ExceptionalUnitGraph cfg;
         private final Box box;
         private final HashMap<Stmt, Rain<Ref>> memo;
+        private final String methodName;
+        private final String sourceFile;
         // private final HashMap<Object, StringBuilder> stringBuilders;
         CFGFactory(Body body) {
             if (!(body instanceof JimpleBody)) {
@@ -370,48 +317,56 @@ public class LogPoints {
             this.box = new Box(this.method);
             this.memo = new HashMap<>();
             // this.stringBuilders = new HashMap<>();
+
+            this.methodName = method.getDeclaringClass().getName() + "." + method.getName();
+            SourceFileTag tag = (SourceFileTag)method.getDeclaringClass().getTag("SourceFileTag");
+            if (tag == null) {
+                logger.warn("{} has no source map", format(method));
+                this.sourceFile = "";
+            } else {
+                this.sourceFile = tag.getSourceFile();
+            }
         }
 
         public final Stmt tag(Stmt stmt) {
-            String sourceName = method.getDeclaringClass().getName() + "." + method.getName();
-            stmt.addTag(new SourceMapTag(sourceName, stmt.getJavaSourceStartLineNumber(), stmt.getJavaSourceStartColumnNumber()));
+            stmt.addTag(new SourceMapTag(methodName, sourceFile, stmt.getJavaSourceStartLineNumber()));
             return stmt;
         }
 
-        public final Promise<Rain<Box.Ref>> build(Set<SootMethod> cgstrand) {
+        public final Rain<Box.Ref> build(Set<SootMethod> cgstrand) {
             var stmts = PList.from(cfg.getHeads()).map(unit -> (Stmt)unit);
             return build(stmts, new HashSet<>(), cgstrand);
         }
 
-        private final Promise<Rain<Box.Ref>> build(PList<Stmt> stmts, Set<Stmt> cfgstrand, Set<SootMethod> cgstrand) {
-            return merge(stmts.map(stmt -> build(stmt, cfgstrand, cgstrand))).then(this::process);
+        private final Rain<Box.Ref> build(PList<Stmt> stmts, Set<Stmt> cfgstrand, Set<SootMethod> cgstrand) {
+            return deduplicate(Rain.fix(stmts.flatmap(stmt -> build(stmt, cfgstrand, cgstrand).unfix())));
         }
 
-        private final Promise<Rain<Box.Ref>> build(Stmt stmt, Set<Stmt> cfgstrand, Set<SootMethod> cgstrand) {
+        private final Rain<Box.Ref> build(Stmt stmt, Set<Stmt> cfgstrand, Set<SootMethod> cgstrand) {
             if (memo.containsKey(stmt)) {
                 logger.trace("{} loaded from cache", format(method, stmt));
-                return Promise.just(memo.get(stmt));
+                return memo.get(stmt);
             }
 
             if (cfgstrand.contains(stmt)) {
                 logger.trace("{} untied knot", format(method, stmt));
-                return Promise.just(Rain.of());
+                return Rain.of();
             }
 
             if (isReturn(stmt)) {
                 logger.trace("{} returned", format(method, stmt));
                 var rain = Rain.of(Drop.of(Box.returns(), Rain.of()));
                 memo.put(stmt, rain);
-                return Promise.just(rain);
+                return rain;
             }
 
             //TODO handle exceptional dests;
-            var next = PList.from(cfg.getUnexceptionalSuccsOf(stmt)).map(unit -> (Stmt)unit);
+            var next = PList.from(cfg.getSuccsOf(stmt)).map(unit -> (Stmt)unit);
 
             if (!stmt.containsInvokeExpr()) {
                 logger.trace("{} skipped", format(method, stmt));
                 cfgstrand.add(stmt);
-                return build(next, cfgstrand, cgstrand).then(rain -> {
+                var promise = Promise.lazy(() -> build(next, cfgstrand, cgstrand)).then(rain -> {
                     return rain.empty().map(rainEmpty -> {
                         if (!rainEmpty) {
                             cfgstrand.remove(stmt);
@@ -420,8 +375,10 @@ public class LogPoints {
                         return rain;
                     });
                 });
+                return Rain.bind(promise);
             }
 
+            //TODO
             // // aggregate string builders
             // var ie = stmt.getInvokeExpr();
             // var mr = ie.getMethodRef();
@@ -445,19 +402,19 @@ public class LogPoints {
             if (match(stmt)) {
                 logger.trace("{} matched", format(method, stmt));
                 tag(stmt);
-                var nextRain = Rain.bind(build(next, new HashSet<>(), new HashSet<>()));
+                var nextRain = Rain.bind(Promise.lazy(() -> build(next, new HashSet<>(), new HashSet<>())));
                 var rain = Rain.of(Drop.of(box.of(stmt), nextRain));
                 memo.put(stmt, rain);
-                return Promise.just(rain);
+                return rain;
             }
 
             var methods = PList.from(cg.edgesOutOf(stmt)).map(edge -> edge.tgt()).filter(m -> Promise.<Boolean>just(!skip(m)));
 
-            return methods.empty().then(methodsEmpty -> {
+            return Rain.<Ref>bind(methods.empty().then(methodsEmpty -> {
                 if (methodsEmpty) {
                     logger.trace("{} skipping invokation that resolves to nothing", format(method, stmt));
                     cfgstrand.add(stmt);
-                    return build(next, cfgstrand, cgstrand).then(rain -> {
+                    return Promise.lazy(() -> build(next, cfgstrand, cgstrand)).then(rain -> {
                         return rain.empty().map(rainEmpty -> {
                             if (!rainEmpty) {
                                 cfgstrand.remove(stmt);
@@ -469,82 +426,83 @@ public class LogPoints {
                 }
 
                 logger.trace("{} substituing with methods {}", format(method, stmt), methods.collect(Collectors.toList()).join());
-                return LogPoints.this.build(stmt, methods, cgstrand)
-                .map(this::reduce)
-                .map(this::copy)
-                .then(subrain -> {
-                    cfgstrand.add(stmt);
-                    var retsSkipped = build(next, cfgstrand, cgstrand);
-                    var rets = Rain.bind(build(next, new HashSet<>(), new HashSet<>()));
+                var subrain = copy(LogPoints.this.build(stmt, methods, cgstrand));
 
-                    return merge(subrain.unfix().map(drop -> {
-                        var ref = drop.get();
+                cfgstrand.add(stmt);
+                var retsSkipped = Rain.bind(Promise.lazy(() -> build(next, cfgstrand, cgstrand)));
 
-                        if (ref.returns()) {
-                            return retsSkipped;
-                        }
+                var rets = Rain.bind(Promise.lazy(() -> build(next, new HashSet<>(), new HashSet<>())));
 
-                        return Promise.just(Rain.of(Drop.of(ref, connect(drop.next(), rets))));
-                    }));
-                }).then(rain -> {
-                    return rain.empty().map(rainEmpty -> {
-                        if (!rainEmpty) {
-                            cfgstrand.remove(stmt);
-                            this.memo.put(stmt, rain);
-                        }
-                        return rain;
-                    });
+                var rain = Rain.<Ref>merge(subrain.unfix().map(drop -> {
+                    var ref = drop.get();
+
+                    if (ref.returns()) {
+                        return retsSkipped;
+                    }
+
+                    return Rain.of(Drop.of(ref, connect(drop.next(), rets)));
+                }));
+                return rain.empty().map(rainEmpty -> {
+                    if (!rainEmpty) {
+                        cfgstrand.remove(stmt);
+                        this.memo.put(stmt, rain);
+                    }
+                    return rain;
                 });
-            });
-        }
-
-        private Promise<Rain<Ref>> process(Rain<Box.Ref> rain) {
-            // filter out similar boxes inside a single layer of rain
-            // all return stmt are considered similar (thus using the key `null`)
-            var seen = new HashSet<Box.Ref>();
-            var drops = rain.unfix().<PList<Drop<Ref, Rain<Ref>>>>foldl(Promise.just(PList.of()), (drop, acc) -> {
-                var ref = drop.get();
-                if (seen.contains(ref)) {
-                    return acc;
-                }
-                seen.add(ref);
-                return Promise.just(PList.cons(drop, PList.bind(acc)));
-            });
-
-            return drops.map(Rain::fix);
-        }
-
-        private Rain<Ref> connect(Rain<Ref> rain, Rain<Ref> rets) {
-            return rain.fold(drops -> Rain.merge(drops.map(drop -> {
-                if (drop.get().returns()) {
-                    return rets;
-                }
-                return Rain.of(drop);
-            })));
+            }));
         }
 
         private Rain<Ref> copy(Rain<Ref> rain) {
-            var memo = new HashMap<Ref, Ref>();
-            return rain.map(ref -> memo.computeIfAbsent(ref, r -> box.of(r)));
-        }
-
-        private Rain<Ref> reduce(Rain<Ref> rain) {
-            var memo1 = new LinkedHashMap<Stmt, Drop<Ref, Rain<Ref>>>();
-            var out = rain.unfix().foldl(Promise.nil(), (drop, acc) -> {
-                memo1.compute(drop.get().get(), (s, d) -> {
-                    if (d == null) {
-                        return drop;
-                    }
-                    return Drop.of(d.get(), Rain.merge(drop.next(), d.next()));
+            final var memo = new HashMap<Ref, Ref>();
+            return rain.map(ref -> {
+                return memo.computeIfAbsent(ref, r -> {
+                    return box.of(r);
                 });
-                return acc;
-            }).map(nothing -> {
-                var drops = PList.from(memo1.values());
-                drops.map(drop -> Drop.of(drop.get(), reduce(drop.next())));
-                return Rain.fix(drops);
             });
-            return Rain.bind(out);
         }
+    }
+
+    /**
+     * merge rains
+     *
+     * @param rain
+     * @return
+     */
+    private Rain<Ref> deduplicate(Rain<Ref> rain) {
+        var drops = deduplicate(rain.unfix());
+        drops = drops.map(drop -> Drop.of(drop.get(), deduplicate(drop.next())));
+        return Rain.fix(drops);
+    }
+
+    /**
+     * deduplicates plist of drops with the same stmt
+     */
+    private PList<Drop<Ref, Rain<Ref>>> deduplicate(PList<Drop<Ref, Rain<Ref>>> drops) {
+        final var memo = new LinkedHashMap<Stmt, Drop<Ref, Rain<Ref>>>();
+        final var out = drops.foldl(Promise.nil(), (drop, acc) -> {
+            var ref = drop.get();
+            memo.compute(ref.get(), (s, d) -> {
+                if (d == null) {
+                    return drop;
+                }
+                var r = d.get();
+                assert ref.recursive() == r.recursive();
+                return Drop.of(r, Rain.merge(drop.next(), d.next()));
+            });
+            return acc;
+        }).map(nothing -> {
+            return PList.from(memo.values());
+        });
+        return PList.bind(out);
+    }
+
+    private Rain<Ref> connect(Rain<Ref> rain, Rain<Ref> rets) {
+        return rain.fold(drops -> Rain.merge(drops.map(drop -> {
+            if (drop.get().returns()) {
+                return rets;
+            }
+            return Rain.of(drop);
+        })));
     }
 
     static boolean isReturn(Stmt stmt) {
@@ -561,4 +519,63 @@ public class LogPoints {
         }
         return format(method) + " [" + stmt.toString() + "]@[" + stmt.hashCode() + "]";
     }
+
+    // private Rain<Ref> resolve(Rain<Ref> rain) {
+    //     var seen = new HashSet<Ref>();
+    //     var promise = rain.<Promise<Void>>fold(drops -> drops.foldl(Promise.<Void>nil(), (drop, acc) -> {
+    //         var ref = drop.get();
+    //         if (ref.recursive() || seen.contains(ref)) {
+    //             return acc;
+    //         }
+    //         seen.add(ref);
+    //         return drop.next().then(n -> acc);
+    //     }));
+
+    //     return Rain.bind(promise.map(n -> rain));
+    // }
+
+    // protected static Promise<Rain<Ref>> resolve(Rain<Ref> rain) {
+    //     return resolve(rain, new HashSet<>()).map(v -> rain);
+    // }
+
+    // protected static Promise<Void> resolve(Rain<Ref> rain, Set<Ref> memo) {
+    //     return rain.unfix().<Promise<Void>>map(drop -> {
+    //         if (drop.get().sentinel() || memo.contains(drop.get())) {
+    //             return Promise.nil();
+    //         }
+
+    //         return resolve(drop.next(), memo);
+    //     }).foldl(Promise.nil(), (promise, resolved) -> {
+    //         return promise.then(u -> {
+    //             return resolved.then(v -> {
+    //                 return Promise.nil();
+    //             });
+    //         });
+    //     });
+    // }
+
+    // static Promise<Rain<Ref>> merge(PList<Promise<Rain<Ref>>> promises) {
+    //     return promises.foldl(Promise.just(PList.<Drop<Ref, Rain<Ref>>>of()), (promise, acc) -> {
+    //         return promise.then(u -> {
+    //             return acc.then(v -> {
+    //                 return Promise.just(u.unfix().concat(v));
+    //             });
+    //         });
+    //     }).map(Rain::fix);
+    // }
+
+    // private final Rain<Box.Ref> postprocess(Rain<Box.Ref> rain, Map<Ref, Rain<Ref>> memo) {
+    //     return Rain.merge(rain.unfix().<Rain<Ref>>map(drop -> {
+    //         var ref = drop.get();
+    //         if (isReturn(ref.get())) {
+    //             return Rain.of();
+    //         }
+    //         if (memo.containsKey(ref)) {
+    //             return memo.get(ref);
+    //         }
+    //         var out = Rain.<Ref>of(Drop.of(ref, Rain.bind(Promise.lazy(() -> postprocess(drop.next(), memo)))));
+    //         memo.put(ref, out);
+    //         return out;
+    //     }));
+    // }
 }

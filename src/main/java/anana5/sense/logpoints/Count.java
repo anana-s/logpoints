@@ -28,7 +28,7 @@ public class Count {
                 var vcount = client.send(graph -> {
                     var vertices = new HashSet<SerialRef>();
                     for (var root : graph.roots()) {
-                        if (root.sentinel() || vertices.contains(root)) {
+                        if (root.returns() || root.recursive() || root.sentinel() || vertices.contains(root)) {
                             continue;
                         }
                         vertices.add(root);
