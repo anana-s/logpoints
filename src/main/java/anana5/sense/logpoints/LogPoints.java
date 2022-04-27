@@ -2,16 +2,15 @@ package anana5.sense.logpoints;
 
 import java.io.IOException;
 import java.nio.file.Files;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.Map.Entry;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -21,8 +20,10 @@ import org.slf4j.LoggerFactory;
 import anana5.graph.rainfall.Drop;
 import anana5.graph.rainfall.Rain;
 import anana5.sense.logpoints.Box.Ref;
+import anana5.util.ListF;
 import anana5.util.PList;
 import anana5.util.Promise;
+import anana5.util.Tuple;
 import soot.Body;
 import soot.EntryPoints;
 import soot.PackManager;
@@ -35,10 +36,8 @@ import soot.jimple.JimpleBody;
 import soot.jimple.ReturnStmt;
 import soot.jimple.ReturnVoidStmt;
 import soot.jimple.Stmt;
-import soot.jimple.internal.JReturnVoidStmt;
 import soot.jimple.toolkits.callgraph.CallGraph;
 import soot.options.Options;
-import soot.tagkit.LineNumberTag;
 import soot.tagkit.SourceFileTag;
 import soot.toolkits.graph.ExceptionalUnitGraph;
 
@@ -60,6 +59,7 @@ public class LogPoints {
     private boolean trace = false;
     private List<Pattern> tags = new ArrayList<>();
     private List<SootMethod> targets = new ArrayList<>();
+    private boolean clinit = true;
 
     public LogPoints configure() {
         try {
@@ -143,6 +143,11 @@ public class LogPoints {
         return this;
     }
 
+    public LogPoints clinit(boolean should) {
+        this.clinit = should;
+        return this;
+    }
+
     public class EntrypointNotFoundException extends Exception {
         private final String string;
         public EntrypointNotFoundException(String string, Throwable cause) {
@@ -155,7 +160,13 @@ public class LogPoints {
     }
 
     public PList<SootMethod> entrypoints() {
-        return PList.from(targets).concat(PList.from(EntryPoints.v().clinits()));
+        PList<SootMethod> out;
+        if (clinit) {
+            out = PList.from(targets).concat(PList.from(EntryPoints.v().clinits()));
+        } else {
+            out = PList.from(targets);
+        }
+        return out.filter(m -> Promise.just(!skip(m)));
     }
 
     public LogPoints entrypoint(String cls) throws EntrypointNotFoundException {
@@ -163,7 +174,8 @@ public class LogPoints {
             List<String> path = Arrays.asList(cls.split("\\."));
             SootClass c = Scene.v().forceResolve(String.join(".", path.subList(0, path.size() - 1)), SootClass.BODIES);
             c.setApplicationClass();
-            SootMethod m = c.getMethodByName(path.get(path.size() - 1));
+            // SootMethod m = c.getMethodByName(path.get(path.size() - 1));
+            SootMethod m = c.getMethods().stream().filter(n -> n.getName().equals(path.get(path.size() - 1))).findFirst().get();
             targets.add(m);
         } catch (RuntimeException e) {
             throw new EntrypointNotFoundException(cls, e);
@@ -225,6 +237,7 @@ public class LogPoints {
     }
 
     public void reset() {
+        done.clear();
         setGraph(null);
     }
 
@@ -236,18 +249,22 @@ public class LogPoints {
             this.cg = Scene.v().getCallGraph();
         }
 
-        return Rain.bind(Promise.lazy(() -> build(null, entrypoints(), new HashSet<>())));
+        return deduplicate(new Box(null), build(null, entrypoints(), new HashSet<>()));
     }
 
-    // annoying methods to be skipped
-    static List<String> names = Arrays.asList(
-        "hashCode",
-        "equals"
-    );
+    // // methods to be skipped
+    // static List<String> names = Arrays.asList(
+    //     "hashCode",
+    //     "equals",
+    //     "toString",
+    //     "clone",
+    //     "getClass"
+    // );
     static boolean skip(SootMethod method) {
-        return !method.isConcrete() ||
-            // method.getDeclaringClass().isLibraryClass() ||
-            names.contains(method.getName());
+        return !method.isConcrete()
+            || method.getDeclaringClass().isLibraryClass()
+            // || names.contains(method.getName())
+            ;
     }
 
     public final boolean match(Stmt stmt) {
@@ -266,21 +283,16 @@ public class LogPoints {
     }
 
     private final Rain<Box.Ref> build(Stmt invoker, PList<SootMethod> methods, Set<SootMethod> strand) {
-        // build clinit first
-        // var cs = methods.filter(method -> method.getName().equals("<clinit>"));
-        var ms = methods.filter(method -> Promise.just(!method.getName().equals("<clinit>")));
-
-        var mr = Rain.merge(ms.map(m -> build(invoker, m, strand)));
-
-        return deduplicate(mr);
+        var mr = Rain.merge(methods.map(m -> build(invoker, m, strand)));
+        // return deduplicate(mr); // can not deduplicate because of loops
+        return mr;
     }
 
     private final Rain<Box.Ref> build(Stmt invoker, SootMethod method, Set<SootMethod> strand) {
-
         if (done.containsKey(method)) {
             if (strand.contains(method)) {
                 logger.trace("{} added sentinel", format(method));
-                return Rain.of(Drop.of(Box.sentinel(true), done.get(method)));
+                return Rain.of(Drop.of(Box.sentinel(invoker, true), done.get(method)));
             } else {
                 logger.trace("{} loaded from cache", format(method));
                 return done.get(method);
@@ -339,7 +351,7 @@ public class LogPoints {
         }
 
         private final Rain<Box.Ref> build(PList<Stmt> stmts, Set<Stmt> cfgstrand, Set<SootMethod> cgstrand) {
-            return deduplicate(Rain.fix(stmts.flatmap(stmt -> build(stmt, cfgstrand, cgstrand).unfix())));
+            return Rain.fix(PList.bind(deduplicate(stmts.flatmap(stmt -> build(stmt, cfgstrand, cgstrand).unfix())).resolve()));
         }
 
         private final Rain<Box.Ref> build(Stmt stmt, Set<Stmt> cfgstrand, Set<SootMethod> cgstrand) {
@@ -363,7 +375,7 @@ public class LogPoints {
             //TODO handle exceptional dests;
             var next = PList.from(cfg.getSuccsOf(stmt)).map(unit -> (Stmt)unit);
 
-            if (!stmt.containsInvokeExpr()) {
+            if (!stmt.containsInvokeExpr() || stmt.getInvokeExpr().getMethodRef().getDeclaringClass().getName().equals("java.lang.Object")) {
                 logger.trace("{} skipped", format(method, stmt));
                 cfgstrand.add(stmt);
                 var promise = Promise.lazy(() -> build(next, cfgstrand, cgstrand)).then(rain -> {
@@ -408,7 +420,7 @@ public class LogPoints {
                 return rain;
             }
 
-            var methods = PList.from(cg.edgesOutOf(stmt)).map(edge -> edge.tgt()).filter(m -> Promise.<Boolean>just(!skip(m)));
+            var methods = PList.from(cg.edgesOutOf(stmt)).map(edge -> edge.tgt()).filter(m -> Promise.<Boolean>just(!(skip(m) || m.getName().equals("<clinit>"))));
 
             return Rain.<Ref>bind(methods.empty().then(methodsEmpty -> {
                 if (methodsEmpty) {
@@ -426,7 +438,9 @@ public class LogPoints {
                 }
 
                 logger.trace("{} substituing with methods {}", format(method, stmt), methods.collect(Collectors.toList()).join());
-                var subrain = copy(LogPoints.this.build(stmt, methods, cgstrand));
+                var subrain = LogPoints.this.build(stmt, methods, cgstrand);
+                subrain = copy(box, subrain);
+                subrain = deduplicate(box, subrain);
 
                 cfgstrand.add(stmt);
                 var retsSkipped = Rain.bind(Promise.lazy(() -> build(next, cfgstrand, cgstrand)));
@@ -451,15 +465,15 @@ public class LogPoints {
                 });
             }));
         }
+    }
 
-        private Rain<Ref> copy(Rain<Ref> rain) {
-            final var memo = new HashMap<Ref, Ref>();
-            return rain.map(ref -> {
-                return memo.computeIfAbsent(ref, r -> {
-                    return box.of(r);
-                });
+    private static Rain<Ref> copy(Box box, Rain<Ref> rain) {
+        final var memo = new HashMap<Ref, Ref>();
+        return rain.map(ref -> {
+            return memo.computeIfAbsent(ref, r -> {
+                return box.of(r);
             });
-        }
+        });
     }
 
     /**
@@ -468,35 +482,54 @@ public class LogPoints {
      * @param rain
      * @return
      */
-    private Rain<Ref> deduplicate(Rain<Ref> rain) {
-        var drops = deduplicate(rain.unfix());
-        drops = drops.map(drop -> Drop.of(drop.get(), deduplicate(drop.next())));
-        return Rain.fix(drops);
+    private static Rain<Ref> deduplicate(Box box, Rain<Ref> rain) {
+        final var memo = new LinkedHashMap<Stmt, Tuple<Ref, List<Rain<Ref>>>>();
+        return Rain.bind(rain.unfix().foldr(Promise.nil(), (p, drop) -> {
+            var ref = drop.get();
+            memo.compute(ref.get(), (stmt, t) -> {
+                if (t == null) {
+                    final List<Rain<Ref>> rains = new ArrayList<>();
+                    rains.add(drop.next());
+                    return Tuple.of(ref, rains);
+                }
+
+                t.snd().add(drop.next());
+                return t;
+            });
+            return p;
+        }).map(nothing -> {
+            return Rain.fix(PList.from(memo.values()).map(t -> {
+                var rains = t.snd();
+                if (rains.size() <= 1) {
+                    var next = deduplicate(box, rains.get(0));
+                    return Drop.of(t.fst(), next);
+                } else {
+                    var next = deduplicate(box, Rain.merge(PList.from(rains)));
+                    return Drop.of(box.of(t.fst()), next);
+                }
+            }));
+        }));
     }
 
     /**
      * deduplicates plist of drops with the same stmt
      */
-    private PList<Drop<Ref, Rain<Ref>>> deduplicate(PList<Drop<Ref, Rain<Ref>>> drops) {
-        final var memo = new LinkedHashMap<Stmt, Drop<Ref, Rain<Ref>>>();
-        final var out = drops.foldl(Promise.nil(), (drop, acc) -> {
-            var ref = drop.get();
-            memo.compute(ref.get(), (s, d) -> {
-                if (d == null) {
-                    return drop;
+
+    private static PList<Drop<Ref, Rain<Ref>>> deduplicate(PList<Drop<Ref, Rain<Ref>>> drops) {
+        final var memo = new LinkedHashSet<Ref>();
+        return PList.unfold(drops, ds -> {
+            return ds.unfix().then(listF -> listF.match(() -> Promise.just(listF), (d, n) -> {
+                var ref = d.get();
+                if (memo.contains(ref)) {
+                    return n.unfix();
                 }
-                var r = d.get();
-                assert ref.recursive() == r.recursive();
-                return Drop.of(r, Rain.merge(drop.next(), d.next()));
-            });
-            return acc;
-        }).map(nothing -> {
-            return PList.from(memo.values());
+                memo.add(ref);
+                return Promise.just(ListF.cons(d, n));
+            }));
         });
-        return PList.bind(out);
     }
 
-    private Rain<Ref> connect(Rain<Ref> rain, Rain<Ref> rets) {
+    private static Rain<Ref> connect(Rain<Ref> rain, Rain<Ref> rets) {
         return rain.fold(drops -> Rain.merge(drops.map(drop -> {
             if (drop.get().returns()) {
                 return rets;

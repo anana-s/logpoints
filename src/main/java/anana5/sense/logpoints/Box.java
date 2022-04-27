@@ -44,6 +44,11 @@ public class Box implements anana5.util.Ref<SootMethod> {
         return retRef;
     }
 
+    @Deprecated
+    public static Ref sentinel(Stmt stmt, boolean recursive) {
+        return new SentinelRef(recursive);
+    }
+
     public static Ref sentinel(boolean recursive) {
         return new SentinelRef(recursive);
     }
@@ -115,7 +120,7 @@ public class Box implements anana5.util.Ref<SootMethod> {
 
         @Override
         public Ref copy(Box box) {
-            return Box.sentinel(recursive);
+            return new SentinelRef(recursive);
         }
 
         @Override

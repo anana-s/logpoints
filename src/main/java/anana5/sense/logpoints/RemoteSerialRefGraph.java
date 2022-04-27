@@ -70,7 +70,8 @@ public class RemoteSerialRefGraph implements Graph<SerialRef>, AutoCloseable {
     public Set<SerialRef> roots() {
         if (roots == null) {
             try {
-                roots = send(graph -> {
+                roots = send(logpoints -> {
+                    final var graph = logpoints.graph();
                     return graph.roots();
                 });
             } catch (IOException e) {
@@ -86,7 +87,8 @@ public class RemoteSerialRefGraph implements Graph<SerialRef>, AutoCloseable {
             return sources.get(source);
         }
         try {
-            var targets = send(graph -> {
+            var targets = send(logpoints -> {
+                final var graph = logpoints.graph();
                 return graph.from(source);
             });
             sources.put(source, targets);
@@ -103,7 +105,7 @@ public class RemoteSerialRefGraph implements Graph<SerialRef>, AutoCloseable {
     }
 
     @SuppressWarnings("unchecked")
-    public <R extends Serializable> R send(GraphRequest<R> request) throws IOException {
+    public <R extends Serializable> R send(LogPointsRequest<R> request) throws IOException {
         out.writeObject(request);
         out.flush();
         R result;

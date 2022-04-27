@@ -8,7 +8,7 @@ public class WhileInvokation {
         return rng.nextBoolean();
     }
     public static void main(String[] args) {
-        while (test()) {
+        while (true) {
             if (test()) {
                 System.out.println("hello");
             }

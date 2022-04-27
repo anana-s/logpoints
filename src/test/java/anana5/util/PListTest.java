@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
 
-class LListTest {
+class PListTest {
 
     private final PList<Integer> a = PList.of(1, 2, 3);
     private final PList<Integer> b = PList.of(4, 5, 6);
@@ -25,6 +25,15 @@ class LListTest {
             });
         });
         assertEquals(Arrays.asList(1, 2, 3), actual.join());
+        var actual2 = new ArrayList<>();
+        a.foldr(Promise.nil(), (acc, i) -> {
+            actual2.add(i);
+            if (i >= 1) {
+                return Promise.nil();
+            }
+            return acc;
+        }).join();
+        assertEquals(Arrays.asList(1, 2, 3), actual2);
     }
 
     @Test
@@ -35,6 +44,15 @@ class LListTest {
             });
         });
         assertEquals(Arrays.asList(3, 2, 1), actual.join());
+        var actual2 = new ArrayList<>();
+        a.foldl(Promise.nil(), (i, acc) -> {
+            actual2.add(i);
+            if (i >= 2) {
+                return Promise.nil();
+            }
+            return acc;
+        }).join();
+        assertEquals(Arrays.asList(1, 2), actual2);
     }
 
     @Test

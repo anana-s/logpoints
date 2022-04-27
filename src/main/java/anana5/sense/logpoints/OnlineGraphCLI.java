@@ -1,6 +1,7 @@
 package anana5.sense.logpoints;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 
 import anana5.sense.logpoints.LogPoints.EntrypointNotFoundException;
 import net.sourceforge.argparse4j.ArgumentParsers;
@@ -30,7 +31,7 @@ public class OnlineGraphCLI {
             .action(Arguments.append());
 
         parser.addArgument("-x", "--exclude")
-            .setDefault(new ArrayList<>())
+            .setDefault(new ArrayList<>(Arrays.asList("jdk.*")))
             .action(Arguments.append());
 
         parser.addArgument("-t", "--tag")
@@ -38,6 +39,10 @@ public class OnlineGraphCLI {
             .action(Arguments.append());
 
         parser.addArgument("--trace")
+            .setDefault(false)
+            .action(Arguments.storeTrue());
+
+        parser.addArgument("--disable-clinit")
             .setDefault(false)
             .action(Arguments.storeTrue());
 
@@ -66,6 +71,9 @@ public class OnlineGraphCLI {
             LogPoints.v().entrypoint(entrypoint);
         }
         LogPoints.v().trace(ns.getBoolean("trace"));
+        if (ns.getBoolean("disable_clinit")) {
+            LogPoints.v().clinit(false);
+        }
         for (String tag : ns.<String>getList("tag")) {
             LogPoints.v().tag(tag);
         }

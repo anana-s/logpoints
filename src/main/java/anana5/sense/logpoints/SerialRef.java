@@ -88,7 +88,7 @@ public class SerialRef implements anana5.sense.logpoints.Box.Ref, Serializable {
     }
 
     public boolean sentinel() {
-        return recursive() || returns();
+        return sentinel;
     }
 
     @Override

@@ -25,7 +25,8 @@ public class Count {
 
             // traverse graph
             try (var client = RemoteSerialRefGraph.connect(ns.getString("address"))) {
-                var vcount = client.send(graph -> {
+                var vcount = client.send(logpoints -> {
+                    var graph = logpoints.graph();
                     var vertices = new HashSet<SerialRef>();
                     for (var root : graph.roots()) {
                         if (root.returns() || root.recursive() || root.sentinel() || vertices.contains(root)) {

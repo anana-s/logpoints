@@ -36,7 +36,9 @@ public class Server implements Callable<Void>, AutoCloseable {
             log.error("entrypoint not found: {}", e.name());
             return;
         }
-        ExecutorService executor = Executors.newCachedThreadPool();
+
+        // TODO: implement threadsafe promises to use thread pool
+        ExecutorService executor = Executors.newSingleThreadExecutor();
 
         // try (var printer = new DotPrinter(System.out)) {
         //     Rain.bind(LogPoints.v().build()).traverse((a, b) -> {
@@ -54,10 +56,10 @@ public class Server implements Callable<Void>, AutoCloseable {
             }
         });
 
-        try (var server = new ServerSocket(ns.getInt("port"))) {
+        try (var socket = new ServerSocket(ns.getInt("port"))) {
             while (true) {
                 try {
-                    var task = new Server(server);
+                    var task = new Server(socket);
                     log.debug("new connection");
                     executor.submit(task);
                 } catch (IOException e) {
@@ -74,24 +76,19 @@ public class Server implements Callable<Void>, AutoCloseable {
 
     @Override
     public Void call() {
-        var graph = LogPoints.v().graph();
         log.debug("started");
         try {
             while (true) {
-                try {
-                    var req = (GraphRequest<?>)in.readObject();
-                    log.debug("received {}", req);
-                    var res = req.accept(graph);
-                    out.writeObject(res);
-                } catch (EOFException e) {
-                    log.debug("connection closed");
-                    break;
-                } catch (Throwable e) {
-                    log.error("exited on error");
-                    e.printStackTrace();
-                    break;
-                }
+                var req = (LogPointsRequest<?>)in.readObject();
+                log.debug("received {}", req);
+                var res = req.accept(LogPoints.v());
+                out.writeObject(res);
             }
+        } catch (EOFException e) {
+            log.debug("connection closed");
+        } catch (Throwable e) {
+            log.error("exited on error");
+            e.printStackTrace();
         } finally {
             close();
         }
