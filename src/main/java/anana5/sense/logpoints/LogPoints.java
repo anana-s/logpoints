@@ -436,6 +436,7 @@ public class LogPoints {
             }
 
             var methods = PList.from(cg.edgesOutOf(stmt)).map(edge -> edge.tgt()).filter(m -> Promise.<Boolean>just(!(skip(m) || m.getName().equals("<clinit>"))));
+            var count = methods.collect(Collectors.counting()).join();
 
             return Rain.<Ref>bind(methods.empty().then(methodsEmpty -> {
                 if (methodsEmpty) {
@@ -450,10 +451,21 @@ public class LogPoints {
                 }
 
                 logger.trace("{} substituing with methods {}", format(method, stmt), methods.collect(Collectors.toList()).join());
-                var subrain = deduplicate(box, LogPoints.this.build(stmt, methods, cgstrand));
+
+                var subrain = LogPoints.this.build(stmt, methods, cgstrand);
+
+                if (count == 1) {
+                    subrain = copy(box, subrain);
+                } else {
+                    if (count >= 3) {
+                        logger.warn("{} resolves to more than 3 methods", format(method, stmt));
+                    }
+                    subrain = deduplicate(box, subrain);
+                }
+
 
                 cfgstrand.put(stmt, null);
-                var retsSkipped = Rain.bind(Promise.lazy(() -> build(next, cfgstrand, cgstrand)));
+                var skip = Rain.bind(Promise.lazy(() -> build(next, cfgstrand, cgstrand)));
 
                 var rets = Rain.bind(Promise.lazy(() -> build(next, new HashMap<>(), new HashSet<>())));
 
@@ -461,7 +473,7 @@ public class LogPoints {
                     var ref = drop.get();
 
                     if (ref.returns()) {
-                        return retsSkipped;
+                        return skip;
                     }
 
                     return connector.computeIfAbsent(Tuple.of(stmt, ref), r -> Rain.of(Drop.of(box.of(ref), connect(stmt, drop.next(), rets))));
@@ -487,14 +499,14 @@ public class LogPoints {
         }
     }
 
-    // private static Rain<Ref> copy(Box box, Rain<Ref> rain) {
-    //     final var memo = new HashMap<Ref, Ref>();
-    //     return rain.map(ref -> {
-    //         return memo.computeIfAbsent(ref, r -> {
-    //             return box.of(r);
-    //         });
-    //     });
-    // }
+    private static Rain<Ref> copy(Box box, Rain<Ref> rain) {
+        final var memo = new HashMap<Ref, Ref>();
+        return rain.map(ref -> {
+            return memo.computeIfAbsent(ref, r -> {
+                return box.of(r);
+            });
+        });
+    }
 
     /**
      * merge rains
@@ -534,14 +546,15 @@ public class LogPoints {
      */
 
     private static PList<Drop<Ref, Rain<Ref>>> deduplicate(PList<Drop<Ref, Rain<Ref>>> drops) {
-        final var memo = new LinkedHashSet<Ref>();
+        final var memo = new LinkedHashSet<Stmt>();
         return PList.unfold(drops, ds -> {
             return ds.unfix().then(listF -> listF.match(() -> Promise.just(listF), (d, n) -> {
                 var ref = d.get();
-                if (memo.contains(ref)) {
+                var stmt = ref.get();
+                if (memo.contains(stmt)) {
                     return n.unfix();
                 }
-                memo.add(ref);
+                memo.add(stmt);
                 return Promise.just(ListF.cons(d, n));
             }));
         });
