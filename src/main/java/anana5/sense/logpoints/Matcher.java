@@ -68,7 +68,7 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
         //     .setDefault(System.out);
 
         parser.addArgument("--pattern")
-            .setDefault("(?<m>[\\w<>$.]+)\\((?<s>[\\/\\w.]*)\\:(?<l>\\d+)\\)");
+            .setDefault("^(?<m>[\\w<>$.]+)\\((?<s>[\\/\\w.]*)\\:(?<l>\\d+)\\)");
 
         Namespace ns;
         try {
@@ -119,7 +119,7 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
 
     final PList<Line> lines;
     final int MAX_RECURSION = 0;
-    final int MAX_PATHS = 1;
+    final int MAX_PATHS = 10;
     final int MAX_QUEUE_SIZE = 1_000_000;
     final int MAX_HEADS = 30;
 
@@ -260,6 +260,17 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
 
             int c = 0;
 
+            final var thisMaxLength = this.state.paths().stream().map(matches -> matches.collect(Collectors.counting()).join()).collect(Collectors.maxBy(Long::compare));
+            if (thisMaxLength.isPresent()) {
+                final var oMaxLength = o.state.paths().stream().map(matches -> matches.collect(Collectors.counting()).join()).collect(Collectors.maxBy(Long::compare));
+                if (oMaxLength.isPresent()) {
+                    c = Long.compare(oMaxLength.get(), thisMaxLength.get());
+                    if (c != 0) {
+                        return c;
+                    }
+                }
+            }
+
             c = Integer.compare(o.lines.head().join().index(), this.lines.head().join().index());
             if (c != 0) {
                 return c;
@@ -351,7 +362,7 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
             }
 
             // start new path
-            if (this.heads.size() < MAX_HEADS) {
+            if (out.isEmpty() && this.heads.size() < MAX_HEADS) {
                 for (Head succ : new RootSerialHead().apply(line)) {
                     // create a set of heads with the new head added
                     Set<Head> newHeads = new HashSet<>(this.heads);

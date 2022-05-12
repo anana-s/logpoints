@@ -32,7 +32,9 @@ import soot.Scene;
 import soot.SootClass;
 import soot.SootMethod;
 import soot.SootMethodRef;
+import soot.SootResolver;
 import soot.Transform;
+import soot.SootResolver.SootClassNotFoundException;
 import soot.jimple.JimpleBody;
 import soot.jimple.ReturnStmt;
 import soot.jimple.ReturnVoidStmt;
@@ -86,8 +88,8 @@ public class LogPoints {
         // cg options
         Options.v().setPhaseOption("cg.spark", "enabled:true");
         Options.v().setPhaseOption("cg.spark", "string-constants:true");
-        Options.v().setPhaseOption("cg", "safe-forname:false");
-        Options.v().setPhaseOption("cg", "safe-newinstance:false");
+        Options.v().setPhaseOption("cg", "safe-forname:false"); //TODO: set to true
+        Options.v().setPhaseOption("cg", "safe-newinstance:false"); //TODO: set to true
         Options.v().setPhaseOption("cg", "jdkver:11");
         Options.v().setPhaseOption("cg", "verbose:false");
         Options.v().setPhaseOption("cg", "all-reachable:false");
@@ -165,29 +167,38 @@ public class LogPoints {
         }
     }
 
-    public PList<SootMethod> entrypoints() {
-        PList<SootMethod> out;
+    public List<SootMethod> entrypoints() {
+        List<SootMethod> out = new ArrayList<>(targets);
         if (clinit) {
-            out = PList.from(targets).concat(PList.from(EntryPoints.v().clinits()));
-        } else {
-            out = PList.from(targets);
+            out.addAll(EntryPoints.v().clinits());
         }
-        return out.filter(m -> Promise.just(!skip(m)));
+        return out;
     }
 
     public LogPoints entrypoint(String cls) throws EntrypointNotFoundException {
+
         List<String> path = Arrays.asList(cls.split("\\."));
-        SootClass c = Scene.v().forceResolve(String.join(".", path.subList(0, path.size() - 1)), SootClass.BODIES);
-        if (c == null) {
+        SootClass sootClass;
+        try {
+            String className = String.join(".", path.subList(0, path.size() - 1));
+            Options.v().classes().add(className);
+            sootClass = Scene.v().loadClass(className, SootClass.BODIES);
+        } catch (SootClassNotFoundException e) {
             throw new EntrypointNotFoundException(cls);
         }
-        c.setApplicationClass();
+        sootClass.setApplicationClass();
         // SootMethod m = c.getMethodByName(path.get(path.size() - 1));
-        List<SootMethod> ms = c.getMethods().stream().filter(n -> n.getName().equals(path.get(path.size() - 1))).collect(Collectors.toList());
-        targets.addAll(ms);
-        if (ms.size() == 0) {
+        String methodName = path.get(path.size() - 1);
+        List<SootMethod> sootMethods;
+        if (methodName.equals("*")) {
+            sootMethods = sootClass.getMethods();
+        } else {
+            sootMethods = sootClass.getMethods().stream().filter(n -> n.getName().equals(methodName)).collect(Collectors.toList());
+        }
+        if (sootMethods.size() == 0) {
             throw new EntrypointNotFoundException(cls);
         }
+        targets.addAll(sootMethods);
         return this;
     }
 
@@ -257,7 +268,7 @@ public class LogPoints {
             this.cg = Scene.v().getCallGraph();
         }
 
-        var rain = build(null, entrypoints(), new HashSet<>());
+        var rain = build(null, PList.from(entrypoints()), new HashSet<>());
         rain = deduplicate(new Box(null), rain);
         return rain;
     }
@@ -473,18 +484,16 @@ public class LogPoints {
                 });
             }));
         }
+    }
 
-        private Rain<Ref> connect(Stmt invoker, Rain<Ref> rain, Rain<Ref> rets) {
-            return rain.fold(drops -> Rain.merge(drops.map(drop -> {
-                return connector.computeIfAbsent(Tuple.of(invoker, drop.get()), tuple -> {
-                    var ref = tuple.snd();
-                    if (ref.returns()) {
-                        return rets;
-                    }
-                    return Rain.of(Drop.of(box.of(ref), drop.next()));
-                });
-            })));
-        }
+    private static Rain<Ref> connect(Stmt invoker, Rain<Ref> rain, Rain<Ref> rets) {
+        return rain.<Rain<Ref>>fold(drops -> Rain.merge(drops.map(drop -> {
+                var ref = drop.get();
+                if (ref.returns()) {
+                    return rets;
+                }
+                return Rain.of(Drop.of(ref, drop.next()));
+        })));
     }
 
     // private static Rain<Ref> copy(Box box, Rain<Ref> rain) {
@@ -507,24 +516,23 @@ public class LogPoints {
         return deduplicate(box, rain, new HashMap<>());
     }
     private static Rain<Ref> deduplicate(Box box, Rain<Ref> rain, Map<HashSet<Ref>, Drop<Ref, Rain<Ref>>> memo) {
-        final var reduced = new LinkedHashMap<Stmt, List<Drop<Ref, Rain<Ref>>>>();
+        final var reduced = new HashMap<Stmt, List<Drop<Ref, Rain<Ref>>>>();
         return Rain.bind(rain.unfix().foldr(Promise.nil(), (promise, drop) -> {
             final var ref = drop.get();
             final var ds = reduced.computeIfAbsent(ref.get(), stmt -> new ArrayList<>());
             ds.add(drop);
             return promise;
         }).map(nothing -> {
-            return Rain.fix(PList.from(reduced.values()).map(list -> {
-                final var drop = list.get(0);
+            return Rain.fix(PList.from(reduced.values()).map(drops -> {
+                final var drop = drops.get(0);
                 final var ref = drop.get();
-                if (list.size() == 1) {
+                if (drops.size() == 1) {
                     final var key = new HashSet<Ref>();
                     key.add(ref);
-                    return memo.computeIfAbsent(key, k -> Drop.of(ref, deduplicate(box, drop.next(), memo)));
+                    return memo.computeIfAbsent(key, k -> Drop.of(box.of(ref), drop.next()));
                 }
-                final var drops = PList.from(list);
-                final var key = drops.map(Drop::get).collect(Collectors.toCollection(HashSet::new)).join();
-                return memo.computeIfAbsent(key, k -> Drop.of(box.of(ref), deduplicate(box, Rain.merge(drops.map(Drop::next)), memo)));
+                final var key = drops.stream().map(Drop::get).collect(Collectors.toCollection(HashSet::new));
+                return memo.computeIfAbsent(key, k -> Drop.of(box.of(ref), deduplicate(box, Rain.merge(PList.from(drops.stream().map(Drop::next).iterator())), memo)));
             }));
         }));
     }
@@ -534,7 +542,7 @@ public class LogPoints {
      */
 
     private static PList<Drop<Ref, Rain<Ref>>> deduplicate(PList<Drop<Ref, Rain<Ref>>> drops) {
-        final var memo = new LinkedHashSet<Ref>();
+        final var memo = new HashSet<Ref>();
         return PList.unfold(drops, ds -> {
             return ds.unfix().then(listF -> listF.match(() -> Promise.just(listF), (d, n) -> {
                 var ref = d.get();

@@ -7,13 +7,7 @@ import java.util.function.Supplier;
 @FunctionalInterface
 public interface Computation<T> {
 
-    public static class ExecutionException extends RuntimeException {
-        public ExecutionException(Throwable cause) {
-            super(cause);
-        }
-    }
-
-    Continuation accept(Callback<T> k) throws ExecutionException;
+    Continuation accept(Callback<T> k);
 
     static <T> Computation<T> nil() {
         return new Nil<>();
@@ -204,7 +198,7 @@ public interface Computation<T> {
     }
 
     interface Continuation {
-        Continuation next() throws ExecutionException;
+        Continuation next();
 
         static <T> Continuation accept(Computation<T> c, Callback<T> k) {
             return new Visit<T>(c, k);
@@ -217,7 +211,7 @@ public interface Computation<T> {
                 this.k = k;
             }
             @Override
-            public Continuation next() throws ExecutionException {
+            public Continuation next() {
                 return c.accept(k);
             }
         }
@@ -239,7 +233,7 @@ public interface Computation<T> {
         }
     }
 
-    default void run(Consumer<? super T> f) throws ExecutionException {
+    default void run(Consumer<? super T> f) {
         Continuation a = this.accept(Callback.pure(f));
         while (a != null) {
             a = a.next();

@@ -9,17 +9,19 @@ public class Promise<T> implements Computation<T> {
     private enum State {
         SCHEDULED,
         PENDING,
-        RESOLVED,
-        REJECTED
+        RESOLVED
     }
 
     private State state;
     private T value;
 
-    public static class Unresolved extends Exception {
+    public static class Unresolved extends RuntimeException {
         Promise<?> promise;
         public Unresolved(Promise<?> promise) {
             this.promise = promise;
+        }
+        Promise<?> promise() {
+            return promise;
         }
     }
 
@@ -74,33 +76,35 @@ public class Promise<T> implements Computation<T> {
             this.c = c;
         }
 
-        public static class RecursiveDependencyException extends Exception {
-            private final Computation<?> c;
-            public RecursiveDependencyException(Computation<?> c) {
-                this.c = c;
-            }
-            public Computation<?> computation() {
-                return c;
-            }
-        }
-
         @Override
-        public Continuation accept(Callback<T> k) throws ExecutionException {
-            try {
-                return super.accept(k);
-            } catch (ExecutionException e) {
-                if (e.getCause() instanceof Unresolved) {
-                    if (pending()) {
-                        throw e;
-                    }
+        public Continuation accept(Callback<T> k) {
+            switch(super.state) {
+                case RESOLVED:
+                    return Continuation.apply(k, super.value);
+                case PENDING:
+                    throw new Unresolved(this);
+                case SCHEDULED:
+                    // continue computation
                     super.state = State.PENDING;
-                    return Continuation.accept(c, k.map(s -> {
-                        resolve(s);
-                        return s;
-                    }));
-                }
-                throw e;
+                    return Continuation.accept(c, k.map(s -> { resolve(s); return s;}));
+                default:
+                    throw new RuntimeException(String.format("unexpected state [%s]", super.state));
             }
+            // try {
+            //     return super.accept(k);
+            // } catch (ExecutionException e) {
+            //     if (e.getCause() instanceof Unresolved) {
+            //         if (pending()) {
+            //             throw e;
+            //         }
+            //         super.state = State.PENDING;
+            //         return Continuation.accept(c, k.map(s -> {
+            //             resolve(s);
+            //             return s;
+            //         }));
+            //     }
+            //     throw e;
+            // }
         }
 
         @Override
@@ -111,11 +115,11 @@ public class Promise<T> implements Computation<T> {
     }
 
     @Override
-    public Continuation accept(Callback<T> k) throws ExecutionException {
+    public Continuation accept(Callback<T> k) {
         if (resolved()) {
             return Continuation.apply(k, value);
         } else {
-            throw new ExecutionException(new Unresolved(this));
+            throw new Unresolved(this);
         }
     }
 
@@ -151,19 +155,23 @@ public class Promise<T> implements Computation<T> {
         return state.equals(State.PENDING);
     }
 
-    public boolean rejected() {
-        return state.equals(State.REJECTED);
+    public boolean done() {
+        return resolved();
     }
 
-    public boolean done() {
-        return resolved() || rejected();
+    public State state() {
+        return state;
     }
 
     public boolean scheduled() {
         return state.equals(State.SCHEDULED);
     }
 
-    public synchronized T join() throws ExecutionException {
+    public Continuation continuation() {
+        return this.accept(Callback.pure(this::resolve));
+    }
+
+    public synchronized T join() {
         Computation.super.run(this::resolve);
         return value;
     }
