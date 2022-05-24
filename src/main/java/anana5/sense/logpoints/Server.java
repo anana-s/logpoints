@@ -6,8 +6,6 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -57,9 +55,9 @@ public class Server implements Callable<Void>, AutoCloseable {
         parser.addArgument("-t", "--tag")
             .action(Arguments.append());
 
-        parser.addArgument("--trace")
-            .setDefault(false)
-            .action(Arguments.storeTrue());
+        // parser.addArgument("--trace")
+        //     .setDefault(false)
+        //     .action(Arguments.storeTrue());
 
         parser.addArgument("--disable-clinit")
             .setDefault(false)
@@ -101,7 +99,6 @@ public class Server implements Callable<Void>, AutoCloseable {
         for (String entrypoint : ns.<String>getList("entrypoints")) {
             LogPoints.v().entrypoint(entrypoint);
         }
-        LogPoints.v().trace(ns.getBoolean("trace"));
         if (ns.getBoolean("disable_clinit")) {
             LogPoints.v().clinit(false);
         }

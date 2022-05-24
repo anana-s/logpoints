@@ -113,17 +113,18 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
         }
     }
 
-    final Graph<SerialRef> graph;
-    final Collection<SerialRef> roots;
+    final Graph<StmtMatcher> graph;
+    final Collection<StmtMatcher> roots;
     final Pattern pattern;
 
     final PList<Line> lines;
     final int MAX_RECURSION = 0;
     final int MAX_PATHS = 10;
-    final int MAX_QUEUE_SIZE = 1_000_000;
-    final int MAX_HEADS = 30;
+    final int MAX_QUEUE_SIZE = 10_000;
+    final int MAX_HEADS = 3000;
+    final int LOOK_AHEAD = 10;
 
-    private Matcher(Graph<SerialRef> graph, Collection<SerialRef> roots, PList<Line> lines, Pattern pattern) throws IOException {
+    private Matcher(Graph<StmtMatcher> graph, Collection<StmtMatcher> roots, PList<Line> lines, Pattern pattern) throws IOException {
         this.graph = graph;
         this.roots = roots;
         this.lines = lines;
@@ -179,23 +180,33 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
         public int index() {
             return index;
         }
+
+        @Override
+        public String toString() {
+            return String.format("%d: %s", index, value);
+        }
     }
 
     final class Match {
-        private final SerialRef ref;
+        private final StmtMatcher ref;
         private final Line line;
 
-        Match(SerialRef ref, Line line) {
+        Match(StmtMatcher ref, Line line) {
             this.ref = ref;
             this.line = line;
         }
 
-        public SerialRef serial() {
+        public StmtMatcher serial() {
             return ref;
         }
 
         public Line line() {
             return line;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("%d ~ %s", ref.id(), line.toString());
         }
     }
 
@@ -260,28 +271,33 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
 
             int c = 0;
 
-            final var thisMaxLength = this.state.paths().stream().map(matches -> matches.collect(Collectors.counting()).join()).collect(Collectors.maxBy(Long::compare));
-            if (thisMaxLength.isPresent()) {
-                final var oMaxLength = o.state.paths().stream().map(matches -> matches.collect(Collectors.counting()).join()).collect(Collectors.maxBy(Long::compare));
-                if (oMaxLength.isPresent()) {
-                    c = Long.compare(oMaxLength.get(), thisMaxLength.get());
-                    if (c != 0) {
-                        return c;
-                    }
-                }
-            }
+            // c = Integer.compare(o.lines.head().join().index() - o.state.skips().size(), this.lines.head().join().index() - this.state.skips().size());
+            // if (c != 0) {
+            //     return c;
+            // }
 
-            c = Integer.compare(o.lines.head().join().index(), this.lines.head().join().index());
-            if (c != 0) {
-                return c;
-            }
-
-            c = Integer.compare(this.state.skips().size(), o.state.skips().size());
+            c = Integer.compare(this.state.skips().size() / LOOK_AHEAD, o.state.skips().size() / LOOK_AHEAD);
             if (c != 0) {
                 return c;
             }
 
             c = Integer.compare(this.state.paths().size(), o.state.paths().size());
+            if (c != 0) {
+                return c;
+            }
+
+            // final var thisMaxLength = this.state.paths().stream().map(matches -> matches.collect(Collectors.counting()).join()).collect(Collectors.maxBy(Long::compare));
+            // if (thisMaxLength.isPresent()) {
+            //     final var oMaxLength = o.state.paths().stream().map(matches -> matches.collect(Collectors.counting()).join()).collect(Collectors.maxBy(Long::compare));
+            //     if (oMaxLength.isPresent()) {
+            //         c = Long.compare(oMaxLength.get(), thisMaxLength.get());
+            //         if (c != 0) {
+            //             return c;
+            //         }
+            //     }
+            // }
+
+            c = Integer.compare(o.lines.head().join().index(), this.lines.head().join().index());
             if (c != 0) {
                 return c;
             }
@@ -292,11 +308,6 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
             // }
 
             // c = Integer.compare(this.seq, o.seq);
-            // if (c != 0) {
-            //     return c;
-            // }
-
-            // c = Integer.compare(o.lines.head().join().index() - o.seq, this.lines.head().join().index() - this.seq);
             // if (c != 0) {
             //     return c;
             // }
@@ -425,7 +436,7 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
 
     abstract class AbstractMatchingSerialHead implements Head {
 
-        public abstract Collection<SerialRef> serials();
+        public abstract Collection<StmtMatcher> serials();
 
         @Override
         public Collection<Head> apply(Line line) {
@@ -441,16 +452,17 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
             return out;
         }
 
-        private Set<SerialRef> flatten(Collection<SerialRef> serials, int rec) {
-            Set<SerialRef> out = new HashSet<>();
-            for (SerialRef serial : serials) {
+        private Set<StmtMatcher> flatten(Collection<StmtMatcher> serials, int rec) {
+            Set<StmtMatcher> out = new HashSet<>();
+            for (StmtMatcher serial : serials) {
                 if (serial.sentinel()) {
                     if (rec == 0) {
                         continue;
                     }
                     out.addAll(flatten(graph.from(serial), rec - 1));
+                } else {
+                    out.add(serial);
                 }
-                out.add(serial);
             }
 
             return out;
@@ -460,7 +472,7 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
     class RootSerialHead extends AbstractMatchingSerialHead {
 
         @Override
-        public Collection<SerialRef> serials() {
+        public Collection<StmtMatcher> serials() {
             return Matcher.this.roots;
         }
 
@@ -490,7 +502,7 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
         }
 
         @Override
-        public Collection<SerialRef> serials() {
+        public Collection<StmtMatcher> serials() {
             var serial = this.path().head().join().serial();
             return graph.from(serial);
         }
@@ -507,7 +519,7 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
 
         @Override
         public boolean accepting() {
-            return serials().stream().anyMatch(SerialRef::returns);
+            return serials().stream().anyMatch(StmtMatcher::returns);
         }
     }
 
@@ -541,7 +553,7 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
         }
     }
 
-    Maybe<Match> match(SerialRef serial, Line line) {
+    Maybe<Match> match(StmtMatcher serial, Line line) {
         var matcher = pattern.matcher(line.get());
 
         if (!matcher.find()) {

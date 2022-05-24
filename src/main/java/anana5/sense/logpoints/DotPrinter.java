@@ -1,14 +1,16 @@
 package anana5.sense.logpoints;
 
 import java.io.PrintStream;
+import java.nio.ByteBuffer;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.commons.text.StringEscapeUtils;
 
+@Deprecated
 public class DotPrinter implements AutoCloseable {
-    private final Map<SerialRef, String> discovered;
+    private final Map<StmtMatcher, String> discovered;
     private final PrintStream out;
 
     DotPrinter(PrintStream out) {
@@ -18,21 +20,21 @@ public class DotPrinter implements AutoCloseable {
         this.out.println("    edge [style=bold]");
         this.out.println("    node [shape=box, style=\"rounded,bold\", fontname=\"helvetica\"]");
     }
-    
-    public String discover(SerialRef vertex) {
+
+    public String discover(StmtMatcher vertex) {
         if (vertex == null) {
             return "root";
         }
         if (discovered.containsKey(vertex)) {
             return discovered.get(vertex);
         }
-        String id = "\"" + new String(Base64.getEncoder().encode(vertex.hash())) + "\"";
+        String id = "\"" + new String(Base64.getEncoder().encode(/* vertex.hash() */ ByteBuffer.allocate(4).putInt(vertex.hashCode()).array())) + "\"";
         discovered.put(vertex, id);
         out.println("    " + String.format("%s [label=\"%s\"]", id, StringEscapeUtils.escapeJava(vertex.toString())));
         return id;
     }
 
-    public void print(SerialRef from, SerialRef to) {
+    public void print(StmtMatcher from, StmtMatcher to) {
         StringBuilder s = new StringBuilder("    ");
         s.append(discover(from));
         s.append(" -> ");

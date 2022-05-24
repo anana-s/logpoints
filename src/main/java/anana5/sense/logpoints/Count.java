@@ -13,6 +13,9 @@ public class Count {
     private static Logger log = LoggerFactory.getLogger(Count.class);
 
     public static void main(String[] args) {
+        log.error("deprecated");
+        System.exit(1);
+
         try {
             ArgumentParser parser = ArgumentParsers.newFor("logpoints ping").build()
                 .defaultHelp(true)
@@ -27,14 +30,14 @@ public class Count {
             try (var client = RemoteSerialRefGraph.connect(ns.getString("address"))) {
                 var vcount = client.send(logpoints -> {
                     var graph = logpoints.graph();
-                    var vertices = new HashSet<SerialRef>();
+                    var vertices = new HashSet<StmtMatcher>();
                     for (var root : graph.roots()) {
-                        if (root.returns() || root.recursive() || root.sentinel() || vertices.contains(root)) {
+                        if (root.returns() || root.sentinel() || vertices.contains(root)) {
                             continue;
                         }
                         vertices.add(root);
                         graph.traverse(root, (src, tgt) -> {
-                            if (tgt.returns() || tgt.recursive() || tgt.sentinel() || vertices.contains(tgt)) {
+                            if (tgt.returns() || tgt.sentinel() || vertices.contains(tgt)) {
                                 return false;
                             }
                             vertices.add(tgt);
@@ -50,7 +53,7 @@ public class Count {
             e.printStackTrace();
         }
     }
-    
+
 
     // private static class Counter implements Iterator<Integer> {
     //     private int count = 0;

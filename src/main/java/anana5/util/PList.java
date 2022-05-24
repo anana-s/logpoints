@@ -164,8 +164,8 @@ public class PList<T> implements Iterable<T> {
         return filter(func).empty().map(b -> !b);
     }
 
-    public Promise<PList<T>> resolve() {
-        return foldl(Promise.just(this), (head, acc) -> acc);
+    public Promise<Void> resolve() {
+        return foldl(Promise.lazy(), (head, acc) -> acc);
     }
 
     public Promise<Boolean> contains(T t) {
@@ -217,5 +217,9 @@ public class PList<T> implements Iterable<T> {
             });
         }
 
+    }
+
+    public Promise<Long> count() {
+        return foldr(Promise.just(0L), (p, t) -> p.map(a -> a + 1L));
     }
 }

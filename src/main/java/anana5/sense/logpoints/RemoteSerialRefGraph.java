@@ -5,23 +5,20 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.net.Socket;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.List;
 import java.util.Set;
-import java.util.Stack;
-import java.util.function.BiFunction;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import anana5.graph.Graph;
-import anana5.util.Tuple;
+import it.unimi.dsi.fastutil.longs.Long2ReferenceMap;
+import it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap;
 
-public class RemoteSerialRefGraph implements Graph<SerialRef>, AutoCloseable {
+public class RemoteSerialRefGraph implements Graph<StmtMatcher>, AutoCloseable {
     private final Socket socket;
     private final ObjectInputStream in;
     private final ObjectOutputStream out;
-    private final Map<SerialRef, Set<SerialRef>> sources;
-    private Set<SerialRef> roots;
+    private final Long2ReferenceMap<List<StmtMatcher>> sources;
 
     public static final Pattern pattern = Pattern.compile("(?<host>[^:]+)(?::(?<port>\\d{1,5}))?");
 
@@ -29,8 +26,7 @@ public class RemoteSerialRefGraph implements Graph<SerialRef>, AutoCloseable {
         this.socket = new Socket(host, port);
         this.out = new ObjectOutputStream(socket.getOutputStream());
         this.in = new ObjectInputStream(socket.getInputStream());
-        this.sources = new HashMap<>();
-        this.roots = null;
+        this.sources = new Long2ReferenceOpenHashMap<>();
     }
 
     public static RemoteSerialRefGraph connect(String address) throws IOException {
@@ -49,49 +45,37 @@ public class RemoteSerialRefGraph implements Graph<SerialRef>, AutoCloseable {
         this.socket.close();
     }
 
-    public void traverse(SerialRef root, BiFunction<SerialRef, SerialRef, Boolean> consumer) {
-        Stack<Tuple<SerialRef, SerialRef>> stack = new Stack<>();
-        for (SerialRef target : from(root)) {
-            stack.push(Tuple.of(root, target));
+    public List<StmtMatcher> roots() {
+        if (sources.containsKey(0)) {
+            return sources.get(0);
         }
-        while (!stack.isEmpty()) {
-            var edge = stack.pop();
-            var source = edge.fst();
-            var target = edge.snd();
-            if (!consumer.apply(source, target)) {
-                continue;
-            }
-            for (var next : from(target)) {
-                stack.push(Tuple.of(target, next));
-            }
+        try {
+            List<StmtMatcher> roots = send(logpoints -> {
+                final var graph = logpoints.graph();
+                return graph.roots();
+            });
+            sources.put(0, roots);
+            return roots;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
-    }
-
-    public Set<SerialRef> roots() {
-        if (roots == null) {
-            try {
-                roots = send(logpoints -> {
-                    final var graph = logpoints.graph();
-                    return graph.roots();
-                });
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
-        return roots;
     }
 
     @Override
-    public Set<SerialRef> from(SerialRef source) {
-        if (sources.containsKey(source)) {
-            return sources.get(source);
+    public List<StmtMatcher> from(StmtMatcher source) {
+        return from(source.id());
+    }
+
+    public List<StmtMatcher> from(long id) {
+        if (sources.containsKey(id)) {
+            return sources.get(id);
         }
         try {
-            var targets = send(logpoints -> {
+            final var targets = send(logpoints -> {
                 final var graph = logpoints.graph();
-                return graph.from(source);
+                return graph.from(id);
             });
-            sources.put(source, targets);
+            sources.put(id, targets);
             return targets;
 
         } catch (IOException e) {
@@ -100,7 +84,7 @@ public class RemoteSerialRefGraph implements Graph<SerialRef>, AutoCloseable {
     }
 
     @Override
-    public Set<SerialRef> to(SerialRef target) {
+    public Set<StmtMatcher> to(StmtMatcher target) {
         throw new UnsupportedOperationException();
     }
 

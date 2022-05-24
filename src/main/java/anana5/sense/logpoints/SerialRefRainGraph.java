@@ -1,7 +1,9 @@
 package anana5.sense.logpoints;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Stack;
 import java.util.function.BiFunction;
@@ -10,23 +12,29 @@ import java.util.stream.Collectors;
 import anana5.graph.Graph;
 import anana5.graph.rainfall.Drop;
 import anana5.graph.rainfall.Rain;
-import anana5.sense.logpoints.Box.Ref;
 import anana5.util.Tuple;
+import it.unimi.dsi.fastutil.longs.Long2ReferenceMap;
+import it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2ReferenceMap;
+import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
 
-public class SerialRefRainGraph implements Graph<SerialRef> {
-    private final Rain<Ref> rain;
-    private final Map<SerialRef, Rain<Ref>> memo;
-    private HashSet<SerialRef> roots;
+public class SerialRefRainGraph implements Graph<StmtMatcher> {
+    private final Rain<Box> rain;
+    private final Long2ReferenceMap<Rain<Box>> next;
 
-    public SerialRefRainGraph(Rain<Ref> rain) {
-        this.rain = rain;
-        this.memo = new HashMap<>();
-        this.roots = null;
+    private static long count = 1;
+    private static long probe() {
+        return count++;
     }
 
-    public void traverse(SerialRef root, BiFunction<SerialRef, SerialRef, Boolean> consumer) {
-        Stack<Tuple<SerialRef, SerialRef>> stack = new Stack<>();
-        for (SerialRef target : from(root)) {
+    public SerialRefRainGraph(Rain<Box> rain) {
+        this.rain = rain;
+        this.next = new Long2ReferenceOpenHashMap<>();
+    }
+
+    public void traverse(StmtMatcher root, BiFunction<StmtMatcher, StmtMatcher, Boolean> consumer) {
+        Stack<Tuple<StmtMatcher, StmtMatcher>> stack = new Stack<>();
+        for (StmtMatcher target : from(root)) {
             stack.push(Tuple.of(root, target));
         }
         while (!stack.isEmpty()) {
@@ -42,30 +50,32 @@ public class SerialRefRainGraph implements Graph<SerialRef> {
         }
     }
 
-    private SerialRef visit(Drop<Ref, Rain<Ref>> drop) {
-        SerialRef serial = new SerialRef(drop.get());
-        memo.put(serial, drop.next());
-        return serial;
+    private StmtMatcher visit(Drop<Box, Rain<Box>> drop) {
+        var id = probe();
+        next.put(id, drop.next());
+        var matcher = new StmtMatcher(id, drop.get());
+        return matcher;
     }
 
-    public HashSet<SerialRef> roots() {
-        if (roots == null) {
-            roots = rain.unfix().map(this::visit).collect(Collectors.toCollection(HashSet::new)).join();
-        }
-        return roots;
+    public ArrayList<StmtMatcher> roots() {
+        return rain.unfix().map(this::visit).collect(Collectors.toCollection(ArrayList::new)).join();
+
     }
 
     @Override
-    public HashSet<SerialRef> from(SerialRef source) {
-        if (!memo.containsKey(source)) {
+    public ArrayList<StmtMatcher> from(StmtMatcher source) {
+        return from(source.id());
+    }
+
+    public ArrayList<StmtMatcher> from(long source) {
+        if (!next.containsKey(source)) {
             throw new UnsupportedOperationException("value not yet reached");
         }
-        return memo.get(source).unfix().map(this::visit).collect(Collectors.toCollection(HashSet::new)).join();
-
+        return next.get(source).unfix().map(this::visit).collect(Collectors.toCollection(ArrayList::new)).join();
     }
 
     @Override
-    public HashSet<SerialRef> to(SerialRef target) {
+    public ArrayList<StmtMatcher> to(StmtMatcher target) {
         throw new UnsupportedOperationException();
     }
 }

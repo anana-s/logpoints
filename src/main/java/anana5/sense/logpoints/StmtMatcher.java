@@ -1,15 +1,12 @@
 package anana5.sense.logpoints;
 
 import java.io.Serializable;
-import java.util.Arrays;
 
-import anana5.sense.logpoints.Box.Ref;
 import soot.jimple.Stmt;
 
-public class SerialRef implements anana5.sense.logpoints.Box.Ref, Serializable {
-    private final byte[] hash;
+public class StmtMatcher implements Serializable {
+    private final long id;
 
-    private final boolean recursive;
     private final boolean returns;
     private final boolean sentinel;
 
@@ -20,10 +17,8 @@ public class SerialRef implements anana5.sense.logpoints.Box.Ref, Serializable {
     private final String name;
     private final String[] args;
 
-    public SerialRef(Box.Ref ref) {
-        this.hash = ref.hash();
-
-        this.recursive = ref.recursive();
+    public StmtMatcher(long id, Box ref) {
+        this.id = id;
         this.returns = ref.returns();
         this.sentinel = ref.sentinel();
 
@@ -52,11 +47,10 @@ public class SerialRef implements anana5.sense.logpoints.Box.Ref, Serializable {
         }
     }
 
-    public SerialRef(byte[] hash, String name, String[] args, boolean recursive, boolean returns, boolean sentinel, String methodName, String sourceFile, int lineNumber) {
-        this.hash = hash;
+    public StmtMatcher(long id, String name, String[] args, boolean returns, boolean sentinel, String methodName, String sourceFile, int lineNumber) {
+        this.id = id;
         this.name = name;
         this.args = args;
-        this.recursive = recursive;
         this.returns = returns;
         this.sentinel = sentinel;
         this.methodName = methodName;
@@ -64,8 +58,8 @@ public class SerialRef implements anana5.sense.logpoints.Box.Ref, Serializable {
         this.lineNumber = lineNumber;
     }
 
-    public byte[] hash() {
-        return hash;
+    public long id() {
+        return id;
     }
 
     @Override
@@ -79,41 +73,12 @@ public class SerialRef implements anana5.sense.logpoints.Box.Ref, Serializable {
         return String.format("%s[%s]%s(%s:%d)", name, String.join(",", args), methodName, sourceFile, lineNumber);
     }
 
-    public boolean recursive() {
-        return recursive;
-    }
-
     public boolean returns() {
         return returns;
     }
 
     public boolean sentinel() {
         return sentinel;
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-        if (obj == null) {
-            return false;
-        }
-        if (obj == this) {
-            return true;
-        }
-        if (obj.getClass() != this.getClass()) {
-            return false;
-        }
-        SerialRef other = (SerialRef) obj;
-        return Arrays.equals(hash, other.hash);
-    }
-
-    @Override
-    public int hashCode() {
-        return Arrays.hashCode(hash);
-    }
-
-    @Override
-    public Stmt get() {
-        return null;
     }
 
     public String method() {
@@ -126,10 +91,5 @@ public class SerialRef implements anana5.sense.logpoints.Box.Ref, Serializable {
 
     public int line() {
         return lineNumber;
-    }
-
-    @Override
-    public Ref copy(Box box) {
-        return new SerialRef(hash, name, args, recursive, returns, sentinel, methodName, sourceFile, lineNumber);
     }
 }
