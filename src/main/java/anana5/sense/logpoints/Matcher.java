@@ -326,86 +326,81 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
     //     }
     // }
 
-    interface State {
-        Collection<State> apply(Line line);
-        boolean accepting();
-        Collection<PList<Match>> paths();
-        List<Line> skips();
-    }
-
-    class MultiSerialHeadState implements State {
-        private final Collection<Head> heads;
+    class State {
+        private final PList<Line> lines;
+        private final List<Head> heads;
         private final List<Line> skips;
 
-        private MultiSerialHeadState(Collection<Head> heads) {
+        private State(Collection<Head> heads, PList<Line> lines) {
             this.heads = new ArrayList<>(heads);
             this.skips = new ArrayList<>();
+            this.lines = lines;
         }
 
-        private MultiSerialHeadState(Collection<Head> heads, List<Line> skips) {
+        private State(Collection<Head> heads, PList<Line> lines, List<Line> skips) {
             this.heads = new ArrayList<>(heads);
             this.skips = new ArrayList<>(skips);
+            this.lines = lines;
         }
 
-        private MultiSerialHeadState() {
-            this(Collections.emptyList());
+        private State skip() {
+            var line = lines.head().join();
+            var next = lines.tail();
+            var skips = new ArrayList<>(this.skips);
+            skips.add(line);
+            return new State(heads, next, skips);
         }
 
-        private MultiSerialHeadState(MultiSerialHeadState other, Line skipped) {
-            this.heads = new ArrayList<>(other.heads);
-            this.skips = new ArrayList<>(other.skips);
-            this.skips.add(skipped);
+        private State replace(Head old, Head head) {
+            var heads = new ArrayList<>(this.heads);
+            heads.remove(old);
+            heads.add(head);
+            return new State(heads, lines.tail(), skips);
         }
 
-        @Override
-        public Collection<State> apply(Line line) {
+        public Collection<State> apply(Line asdfasdfasdf) {
+            var line = lines.head().join();
+            var next = lines.tail();
+
             Collection<State> out = new ArrayList<>();
 
-            for (Head head : this.heads) {
+            for (int i = 0; i < this.heads.size(); i++) {
+                Head head = this.heads.get(i);
                 for (Head succ : head.apply(line)) {
-                    // create a set of heads with the new head replacing the old one
-                    Set<Head> newHeads = new HashSet<>(this.heads);
-                    newHeads.remove(head);
-                    newHeads.add(succ);
-
-                    out.add(new MultiSerialHeadState(newHeads, this.skips));
+                    var newHeads = new ArrayList<>(this.heads);
+                    newHeads.set(i, succ);
+                    out.add(new State(newHeads, next, this.skips));
                 }
             }
 
             // start new path
-            if (out.isEmpty() && this.heads.size() < MAX_HEADS) {
+            if (this.heads.size() < MAX_HEADS) {
                 for (Head succ : new RootSerialHead().apply(line)) {
                     // create a set of heads with the new head added
                     Set<Head> newHeads = new HashSet<>(this.heads);
                     newHeads.add(succ);
 
-                    out.add(new MultiSerialHeadState(newHeads, this.skips));
+                    out.add(new State(newHeads, this.skips));
                 }
             }
 
-            if (out.isEmpty()) {
-                out.add(new MultiSerialHeadState(this, line));
-            }
+            out.add(new State(this, line));
 
             return out;
         }
 
-        @Override
         public boolean accepting() {
             return this.heads.stream().allMatch(Head::accepting);
         }
 
-        @Override
         public Collection<PList<Match>> paths() {
             return this.heads.stream().map(Head::path).collect(Collectors.toList());
         }
 
-        @Override
         public List<Line> skips() {
             return this.skips;
         }
 
-        @Override
         public boolean equals(Object obj) {
             if (obj == null) {
                 return false;
@@ -416,7 +411,7 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
             if (obj.getClass() != getClass()) {
                 return false;
             }
-            MultiSerialHeadState other = (MultiSerialHeadState) obj;
+            State other = (State) obj;
             return Objects.equals(heads, other.heads);
         }
 
