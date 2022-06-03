@@ -6,8 +6,6 @@ public class SearchTree {
     interface Evaluable<T extends Evaluable<T>> extends Comparable<T> {
         float heuristic();
 
-        T fork();
-
         @Override
         default int compareTo(T o) {
             return Float.compare(this.heuristic(), o.heuristic());
@@ -27,11 +25,11 @@ public class SearchTree {
 
     interface State extends Evaluable<State> {
         Collection<? extends Action> actions();
-
     }
 
     interface Action extends Evaluable<Action> {
         void apply();
+        State simulate();
     }
 
     class SearchTreeNode<S extends State, A extends Action> {

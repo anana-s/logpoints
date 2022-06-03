@@ -1,5 +1,6 @@
 package anana5.util;
 
+import java.util.NoSuchElementException;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -7,8 +8,10 @@ public interface Maybe<T> extends Ref<T> {
     <R> MaybeMatch<T, R> match();
     <R> R match(Supplier<R> nil, Function<T, R> cons);
     boolean check();
+
     T get();
-    <R> Maybe<R> fmap(Function<T, R> func);
+
+    <R> Maybe<R> map(Function<T, R> f);
 
     static <T> Nothing<T> nothing() {
         return new Nothing<>();
@@ -21,10 +24,10 @@ public interface Maybe<T> extends Ref<T> {
         }
         @Override
         public T get() {
-            return null;
+            throw new NoSuchElementException();
         }
         @Override
-        public <R> Maybe<R> fmap(Function<T, R> func) {
+        public <R> Maybe<R> map(Function<T, R> func) {
             return new Nothing<>();
         }
 
@@ -67,7 +70,7 @@ public interface Maybe<T> extends Ref<T> {
         }
 
         @Override
-        public <R> Maybe<R> fmap(Function<T, R> func) {
+        public <R> Maybe<R> map(Function<T, R> func) {
             return new Just<>(func.apply(value));
         }
 

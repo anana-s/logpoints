@@ -211,60 +211,60 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
         }
     }
 
-    interface Action extends SearchTree.Action {
-    }
-
-    class State implements SearchTree.State {
+    class State implements SearchTree.State, Cloneable {
         private PList<Line> lines;
-        private final Collection<Group> groups;
         private final List<Head> heads;
         private final List<Line> skips;
 
-        private State(Collection<Group> groups, Collection<Head> heads, List<Line> skips, PList<Line> lines) {
-            this.groups = groups;
+        private State(Collection<Head> heads, List<Line> skips, PList<Line> lines) {
             this.heads = new ArrayList<>(heads);
-            this.skips = skips;
+            this.skips = new ArrayList<>(skips);
             this.lines = lines;
         }
 
-        class SkipAction implements Action {
+        abstract class Action implements SearchTree.Action {
+            abstract void act(State state);
 
             @Override
             public void apply() {
-                skips.add(advance());
+                act(State.this);
+            }
+            @Override
+            public State simulate() {
+                State out = State.this.clone();
+                act(out);
+                return out;
+            }
+        }
+
+        class SkipAction extends Action {
+            @Override
+            void act(State state) {
+                state.skips.add(state.advance());
             }
 
             @Override
             public float heuristic() {
                 return -1;
             }
-
-            @Override
-            public SkipAction fork() {
-                throw new NotImplementedException("TODO");
-            }
         }
 
-        class NextStateAction implements Action {
-            private final Head head;
+        class NextStateAction extends Action {
+            private final int idx;
 
-            NextStateAction(Head head) {
-                this.head = head;
+            NextStateAction(int idx) {
+                this.idx = idx;
+            }
+
+            @Override
+            void act(State state) {
+                Head head = state.head(idx);
+                head.accept(state.advance());
             }
 
             @Override
             public float heuristic() {
                 return 0;
-            }
-
-            @Override
-            public void apply() {
-                throw new NotImplementedException("TODO");
-            }
-
-            @Override
-            public NextStateAction fork() {
-                throw new NotImplementedException("TODO");
             }
         }
 
@@ -280,11 +280,6 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
             return actions;
         }
 
-        @Override
-        public anana5.sense.logpoints.SearchTree.State fork() {
-            throw new NotImplementedException("TODO");
-        }
-
         Line advance() {
             var line = lines.head().join();
             lines = lines.tail();
@@ -292,9 +287,19 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
         }
 
         public Collection<Group> groups() {
-            return Collections.unmodifiableCollection(this.groups);
+            return heads.stream().map(head -> head.group).distinct().collect(Collectors.toList());
         }
 
+        public Head head(int i) {
+            return heads.get(i);
+        }
+
+        @Override
+        public State clone() {
+            return new State(heads, skips, lines);
+        }
+
+        @Override
         public boolean equals(Object obj) {
             if (obj == null) {
                 return false;
@@ -309,6 +314,7 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
             return Objects.equals(heads, other.heads);
         }
 
+        @Override
         public int hashCode() {
             return Objects.hash(heads);
         }
@@ -319,7 +325,7 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
         final List<Match> matches;
 
         Group(List<Match> matches) {
-            this.matches = matches;
+            this.matches = new ArrayList<>(matches);
         }
 
         void add(Match match) {
@@ -329,6 +335,11 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
         @Override
         public String toString() {
             return matches.toString();
+        }
+
+        @Override
+        protected Group clone() {
+            return new Group(matches);
         }
     }
 
@@ -341,11 +352,17 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
             this.group = group;
         }
 
-        public Maybe<Head> accept(Line line) {
-            return match(stmt, line).fmap(match -> {
-                this.group.add(match);
-                return new Head(match.serial(), group);
+        public List<Head> accept(Line line) {
+            List<Head> out = new ArrayList<>();
+            match(stmt, line).map(match -> {
+                for (StmtMatcher next : graph.from(match.serial())) {
+                    Group group = this.group.clone();
+                    group.add(match);
+                    out.add(new Head(next, group));
+                }
+                return null;
             });
+            return Collections.unmodifiableList(out);
         }
     }
 

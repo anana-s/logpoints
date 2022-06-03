@@ -1,14 +1,15 @@
 package anana5.graph.rainfall;
 
 import java.util.function.Function;
-
+import anana5.fn.Fix;
+import anana5.fn.H;
 import anana5.util.PList;
 import anana5.util.Promise;
 
 /**
  * A lazy graph implementation using promises.
  */
-public class Rain<T> {
+public class Rain<T> implements H<RainKind, T> {
 
     final private PList<Drop<T, Rain<T>>> unfix;
 
@@ -84,5 +85,10 @@ public class Rain<T> {
 
     public Promise<Boolean> empty() {
         return unfix.empty();
+    }
+
+    @Override
+    public RainKind kind() {
+        return RainKind.instance();
     }
 }
