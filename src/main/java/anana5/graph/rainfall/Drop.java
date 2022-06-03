@@ -2,7 +2,7 @@ package anana5.graph.rainfall;
 
 import anana5.fn.H;
 
-public class Drop<T, A> implements H<DropFunctor<T>, A> {
+public class Drop<T, A> {
 
     final private T v;
     final private A f;
@@ -27,10 +27,5 @@ public class Drop<T, A> implements H<DropFunctor<T>, A> {
 
     public A next() {
         return this.f;
-    }
-
-    @Override
-    public DropFunctor<T> kind() {
-        return DropFunctor.instance();
     }
 }

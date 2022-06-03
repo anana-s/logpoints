@@ -9,7 +9,7 @@ import anana5.util.Promise;
 /**
  * A lazy graph implementation using promises.
  */
-public class Rain<T> implements H<RainKind, T> {
+public class Rain<T> {
 
     final private PList<Drop<T, Rain<T>>> unfix;
 
@@ -85,10 +85,5 @@ public class Rain<T> implements H<RainKind, T> {
 
     public Promise<Boolean> empty() {
         return unfix.empty();
-    }
-
-    @Override
-    public RainKind kind() {
-        return RainKind.instance();
     }
 }
