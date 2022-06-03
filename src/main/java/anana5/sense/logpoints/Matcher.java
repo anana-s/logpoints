@@ -22,6 +22,7 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
@@ -31,7 +32,7 @@ import java.util.stream.Stream;
 import javax.swing.plaf.nimbus.State;
 
 import com.google.common.collect.MinMaxPriorityQueue;
-
+import org.apache.commons.lang3.NotImplementedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,6 +42,7 @@ import anana5.util.Maybe;
 import anana5.util.PList;
 import anana5.util.Promise;
 import anana5.util.Ref;
+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
 import net.sourceforge.argparse4j.inf.ArgumentParserException;
@@ -50,17 +52,12 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
     private static final Logger log = LoggerFactory.getLogger(Match.class);
 
     public static void main(String[] args) {
-        ArgumentParser parser = ArgumentParsers.newFor("logpoints match").build()
-            .defaultHelp(true)
-            .description("match logs against logpoints");
+        ArgumentParser parser = ArgumentParsers.newFor("logpoints match").build().defaultHelp(true)
+                .description("match logs against logpoints");
 
-        parser.addArgument("address")
-            .type(String.class);
+        parser.addArgument("address").type(String.class);
 
-        parser.addArgument("input")
-            .nargs("?")
-            .type(FileInputStream.class)
-            .setDefault(System.in);
+        parser.addArgument("input").nargs("?").type(FileInputStream.class).setDefault(System.in);
 
         // parser.addArgument("output")
         //     .nargs("?")
@@ -68,7 +65,7 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
         //     .setDefault(System.out);
 
         parser.addArgument("--pattern")
-            .setDefault("^(?<m>[\\w<>$.]+)\\((?<s>[\\/\\w.]*)\\:(?<l>\\d+)\\)");
+                .setDefault("^(?<m>[\\w<>$.]+)\\((?<s>[\\/\\w.]*)\\:(?<l>\\d+)\\)");
 
         Namespace ns;
         try {
@@ -79,7 +76,8 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
         }
 
         // traverse graph
-        try (var in = ns.<InputStream>get("input"); var graph = RemoteSerialRefGraph.connect(ns.get("address"))) {
+        try (var in = ns.<InputStream>get("input");
+                var graph = RemoteSerialRefGraph.connect(ns.get("address"))) {
             // create a plist of all logging statements
             var reader = new BufferedReader(new InputStreamReader(in));
             final var lines = PList.<Integer, Line>unfold(0, i -> {
@@ -96,7 +94,8 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
                 });
             });
 
-            var matcher = new Matcher(graph, graph.roots(), lines, Pattern.compile(ns.get("pattern")));
+            var matcher =
+                    new Matcher(graph, graph.roots(), lines, Pattern.compile(ns.get("pattern")));
 
             matcher.call();
 
@@ -124,7 +123,8 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
     final int MAX_HEADS = 3000;
     final int LOOK_AHEAD = 10;
 
-    private Matcher(Graph<StmtMatcher> graph, Collection<StmtMatcher> roots, PList<Line> lines, Pattern pattern) throws IOException {
+    private Matcher(Graph<StmtMatcher> graph, Collection<StmtMatcher> roots, PList<Line> lines,
+            Pattern pattern) throws IOException {
         this.graph = graph;
         this.roots = roots;
         this.lines = lines;
@@ -135,30 +135,31 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
         // main loop
         final Collection<State> out = new ArrayList<>();
 
-        final Queue<StateUpdate> queue = MinMaxPriorityQueue.maximumSize(MAX_QUEUE_SIZE).create();
+        // final Queue<StateUpdate> queue = MinMaxPriorityQueue.maximumSize(MAX_QUEUE_SIZE).create();
 
-        State root = new MultiSerialHeadState();
+        // MultiHeadState root = new MultiSerialHeadState();
 
-        queue.add(new StateUpdate(root, lines));
+        // queue.add(new StateUpdate(root, lines));
 
-        while (!queue.isEmpty() && out.size() < MAX_PATHS) {
-            StateUpdate update = queue.poll();
-            if (update.done()) {
-                State state = update.state();
-                out.add(state);
-                for (PList<Match> path : state.paths()) {
-                    var list = path.map(Match::serial).collect(Collectors.toCollection(ArrayList::new)).join();
-                    Collections.reverse(list);
-                    System.out.println(list);
-                }
-                System.out.println();
-                continue;
-            }
+        // while (!queue.isEmpty() && out.size() < MAX_PATHS) {
+        //     StateUpdate update = queue.poll();
+        //     if (update.done()) {
+        //         MultiHeadState state = update.state();
+        //         out.add(state);
+        //         for (PList<Match> path : state.paths()) {
+        //             var list = path.map(Match::serial)
+        //                     .collect(Collectors.toCollection(ArrayList::new)).join();
+        //             Collections.reverse(list);
+        //             System.out.println(list);
+        //         }
+        //         System.out.println();
+        //         continue;
+        //     }
 
-            var succs = update.succs();
+        //     var succs = update.succs();
 
-            queue.addAll(succs);
-        }
+        //     queue.addAll(succs);
+        // }
 
         return out;
     }
@@ -210,195 +211,88 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
         }
     }
 
-    final class StateUpdate implements Comparable<StateUpdate> {
-        private final State state;
-        private final PList<Line> lines;
-        // private final int seq;
-        // private final int rec;
-
-        StateUpdate(State state, PList<Line> lines) {
-            this.state = state;
-            this.lines = eat(lines);
-            // this.seq = 0;
-            // this.rec = 0;
-        }
-
-        // StateUpdate(int seq, State state, PList<Line> lines) {
-        //     this.state = state;
-        //     this.lines = lines;
-        //     this.seq = seq;
-        //     // this.rec = rec;
-        // }
-
-        public boolean done() {
-            return this.lines.empty().join();
-        }
-
-        public Collection<StateUpdate> succs() {
-            if (done()) {
-                return Collections.emptyList();
-            }
-
-            var line = lines.head().join();
-            var tail = lines.tail();
-
-            Collection<StateUpdate> out = new ArrayList<>();
-
-            // apply and queue next state updates
-            for (State state : this.state.apply(line)) {
-                out.add(new StateUpdate(state, tail));
-            }
-
-            return out;
-        }
-
-        public State state() {
-            return state;
-        }
-
-        @Override
-        public int compareTo(StateUpdate o) {
-            if (done()) {
-                if (o.done()) {
-                    return 0;
-                } else {
-                    return -1;
-                }
-            }
-            if (o.done()) {
-                return 1;
-            }
-
-            int c = 0;
-
-            // c = Integer.compare(o.lines.head().join().index() - o.state.skips().size(), this.lines.head().join().index() - this.state.skips().size());
-            // if (c != 0) {
-            //     return c;
-            // }
-
-            c = Integer.compare(this.state.skips().size() / LOOK_AHEAD, o.state.skips().size() / LOOK_AHEAD);
-            if (c != 0) {
-                return c;
-            }
-
-            c = Integer.compare(this.state.paths().size(), o.state.paths().size());
-            if (c != 0) {
-                return c;
-            }
-
-            // final var thisMaxLength = this.state.paths().stream().map(matches -> matches.collect(Collectors.counting()).join()).collect(Collectors.maxBy(Long::compare));
-            // if (thisMaxLength.isPresent()) {
-            //     final var oMaxLength = o.state.paths().stream().map(matches -> matches.collect(Collectors.counting()).join()).collect(Collectors.maxBy(Long::compare));
-            //     if (oMaxLength.isPresent()) {
-            //         c = Long.compare(oMaxLength.get(), thisMaxLength.get());
-            //         if (c != 0) {
-            //             return c;
-            //         }
-            //     }
-            // }
-
-            c = Integer.compare(o.lines.head().join().index(), this.lines.head().join().index());
-            if (c != 0) {
-                return c;
-            }
-
-            // c = Integer.compare(this.rec, o.rec);
-            // if (c != 0) {
-            //     return c;
-            // }
-
-            // c = Integer.compare(this.seq, o.seq);
-            // if (c != 0) {
-            //     return c;
-            // }
-
-            return c;
-        }
+    interface Action extends SearchTree.Action {
     }
 
-    // private Promise<Collection<State>> run(State state, PList<Line> lines, int rec) {
-    //     Line line = lines.head().join();
-
-    //     Collection<State> out = new ArrayList<>();
-
-    //     for (State nextState : state.apply(line)) {
-    //         out.addAll(run(state, lines.tail(), rec + 1));
-    //     }
-    // }
-
-    class State {
-        private final PList<Line> lines;
+    class State implements SearchTree.State {
+        private PList<Line> lines;
+        private final Collection<Group> groups;
         private final List<Head> heads;
         private final List<Line> skips;
 
-        private State(Collection<Head> heads, PList<Line> lines) {
+        private State(Collection<Group> groups, Collection<Head> heads, List<Line> skips, PList<Line> lines) {
+            this.groups = groups;
             this.heads = new ArrayList<>(heads);
-            this.skips = new ArrayList<>();
+            this.skips = skips;
             this.lines = lines;
         }
 
-        private State(Collection<Head> heads, PList<Line> lines, List<Line> skips) {
-            this.heads = new ArrayList<>(heads);
-            this.skips = new ArrayList<>(skips);
-            this.lines = lines;
-        }
+        class SkipAction implements Action {
 
-        private State skip() {
-            var line = lines.head().join();
-            var next = lines.tail();
-            var skips = new ArrayList<>(this.skips);
-            skips.add(line);
-            return new State(heads, next, skips);
-        }
-
-        private State replace(Head old, Head head) {
-            var heads = new ArrayList<>(this.heads);
-            heads.remove(old);
-            heads.add(head);
-            return new State(heads, lines.tail(), skips);
-        }
-
-        public Collection<State> apply(Line asdfasdfasdf) {
-            var line = lines.head().join();
-            var next = lines.tail();
-
-            Collection<State> out = new ArrayList<>();
-
-            for (int i = 0; i < this.heads.size(); i++) {
-                Head head = this.heads.get(i);
-                for (Head succ : head.apply(line)) {
-                    var newHeads = new ArrayList<>(this.heads);
-                    newHeads.set(i, succ);
-                    out.add(new State(newHeads, next, this.skips));
-                }
+            @Override
+            public void apply() {
+                skips.add(advance());
             }
 
-            // start new path
-            if (this.heads.size() < MAX_HEADS) {
-                for (Head succ : new RootSerialHead().apply(line)) {
-                    // create a set of heads with the new head added
-                    Set<Head> newHeads = new HashSet<>(this.heads);
-                    newHeads.add(succ);
-
-                    out.add(new State(newHeads, this.skips));
-                }
+            @Override
+            public float heuristic() {
+                return -1;
             }
 
-            out.add(new State(this, line));
-
-            return out;
+            @Override
+            public SkipAction fork() {
+                throw new NotImplementedException("TODO");
+            }
         }
 
-        public boolean accepting() {
-            return this.heads.stream().allMatch(Head::accepting);
+        class NextStateAction implements Action {
+            private final Head head;
+
+            NextStateAction(Head head) {
+                this.head = head;
+            }
+
+            @Override
+            public float heuristic() {
+                return 0;
+            }
+
+            @Override
+            public void apply() {
+                throw new NotImplementedException("TODO");
+            }
+
+            @Override
+            public NextStateAction fork() {
+                throw new NotImplementedException("TODO");
+            }
         }
 
-        public Collection<PList<Match>> paths() {
-            return this.heads.stream().map(Head::path).collect(Collectors.toList());
+        @Override
+        public float heuristic() {
+            throw new NotImplementedException("TODO");
         }
 
-        public List<Line> skips() {
-            return this.skips;
+        @Override
+        public Collection<Action> actions() {
+            Collection<Action> actions = new ArrayList<>();
+            actions.add(new SkipAction());
+            return actions;
+        }
+
+        @Override
+        public anana5.sense.logpoints.SearchTree.State fork() {
+            throw new NotImplementedException("TODO");
+        }
+
+        Line advance() {
+            var line = lines.head().join();
+            lines = lines.tail();
+            return line;
+        }
+
+        public Collection<Group> groups() {
+            return Collections.unmodifiableCollection(this.groups);
         }
 
         public boolean equals(Object obj) {
@@ -415,137 +309,60 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
             return Objects.equals(heads, other.heads);
         }
 
-        @Override
         public int hashCode() {
             return Objects.hash(heads);
         }
 
     }
 
-    interface Head {
-        Collection<Head> apply(Line line);
-        PList<Match> path();
-        int length();
-        boolean accepting();
-    }
+    class Group {
+        final List<Match> matches;
 
-    abstract class AbstractMatchingSerialHead implements Head {
+        Group(List<Match> matches) {
+            this.matches = matches;
+        }
 
-        public abstract Collection<StmtMatcher> serials();
+        void add(Match match) {
+            this.matches.add(match);
+        } 
 
         @Override
-        public Collection<Head> apply(Line line) {
-            Collection<Head> out = new ArrayList<>();
+        public String toString() {
+            return matches.toString();
+        }
+    }
 
-            for (var serial : flatten(serials(), MAX_RECURSION)) {
-                Maybe<Match> m = match(serial, line);
-                if (m.check()) {
-                    out.add(new SerialHead(PList.cons(m.get(), path()), length() + 1));
+    class Head {
+        private final StmtMatcher stmt;
+        private final Group group;
+
+        Head(StmtMatcher stmt, Group group) {
+            this.stmt = stmt;
+            this.group = group;
+        }
+
+        public Maybe<Head> accept(Line line) {
+            return match(stmt, line).fmap(match -> {
+                this.group.add(match);
+                return new Head(match.serial(), group);
+            });
+        }
+    }
+
+    private Set<StmtMatcher> flatten(Collection<StmtMatcher> matchers, int rec) {
+        Set<StmtMatcher> out = new HashSet<>();
+        for (StmtMatcher matcher : matchers) {
+            if (matcher.sentinel()) {
+                if (rec == 0) {
+                    continue;
                 }
+                out.addAll(flatten(graph.from(matcher), rec - 1));
+            } else {
+                out.add(matcher);
             }
-
-            return out;
         }
 
-        private Set<StmtMatcher> flatten(Collection<StmtMatcher> serials, int rec) {
-            Set<StmtMatcher> out = new HashSet<>();
-            for (StmtMatcher serial : serials) {
-                if (serial.sentinel()) {
-                    if (rec == 0) {
-                        continue;
-                    }
-                    out.addAll(flatten(graph.from(serial), rec - 1));
-                } else {
-                    out.add(serial);
-                }
-            }
-
-            return out;
-        }
-    }
-
-    class RootSerialHead extends AbstractMatchingSerialHead {
-
-        @Override
-        public Collection<StmtMatcher> serials() {
-            return Matcher.this.roots;
-        }
-
-        @Override
-        public PList<Match> path() {
-            return PList.of();
-        }
-
-        @Override
-        public int length() {
-            return 0;
-        }
-
-        @Override
-        public boolean accepting() {
-            return false;
-        }
-    }
-
-    class SerialHead extends AbstractMatchingSerialHead {
-        private final PList<Match> path;
-        private final int length;
-
-        SerialHead(PList<Match> path, int length) {
-            this.path = path;
-            this.length = length;
-        }
-
-        @Override
-        public Collection<StmtMatcher> serials() {
-            var serial = this.path().head().join().serial();
-            return graph.from(serial);
-        }
-
-        @Override
-        public PList<Match> path() {
-            return this.path;
-        }
-
-        @Override
-        public int length() {
-            return this.length;
-        }
-
-        @Override
-        public boolean accepting() {
-            return serials().stream().anyMatch(StmtMatcher::returns);
-        }
-    }
-
-    class AcceptingHead implements Head {
-        private final PList<Match> path;
-        private final int length;
-
-        AcceptingHead(PList<Match> path, int length) {
-            this.path = path;
-            this.length = length;
-        }
-
-        @Override
-        public PList<Match> path() {
-            return this.path;
-        }
-
-        @Override
-        public int length() {
-            return this.length;
-        }
-
-        @Override
-        public Collection<Head> apply(Line line) {
-            return Collections.emptyList();
-        }
-
-        @Override
-        public boolean accepting() {
-            return true;
-        }
+        return out;
     }
 
     Maybe<Match> match(StmtMatcher serial, Line line) {
@@ -559,11 +376,22 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
         var sourceFile = matcher.group("s");
         var lineNumber = Integer.valueOf(matcher.group("l")).intValue();
 
-        if (serial.method().equals(methodName) && serial.source().equals(sourceFile) && serial.line() == lineNumber) {
+        if (serial.method().equals(methodName) && serial.source().equals(sourceFile)
+                && serial.line() == lineNumber) {
             return Maybe.just(new Match(serial, line));
         } else {
             return Maybe.nothing();
         }
+    }
+
+    PList<Line> eat(PList<Line> lines) {
+        Line line;
+        while (!lines.empty().join()
+                && !pattern.matcher((line = lines.head().join()).get()).find()) {
+            log.warn("discarding line {}", line.index() + 1);
+            lines = lines.tail();
+        }
+        return lines;
     }
 
     // class RootSerialHead implements Head {
@@ -747,12 +575,120 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
 
     // }
 
-    PList<Line> eat(PList<Line> lines) {
-        Line line;
-        while (!lines.empty().join() && !pattern.matcher((line = lines.head().join()).get()).find()) {
-            log.warn("discarding line {}", line.index() + 1);
-            lines = lines.tail();
-        }
-        return lines;
-    }
+    // final class StateUpdate implements Comparable<StateUpdate> {
+    //     private final MultiHeadState state;
+    //     private final PList<Line> lines;
+    //     // private final int seq;
+    //     // private final int rec;
+
+    //     StateUpdate(MultiHeadState state, PList<Line> lines) {
+    //         this.state = state;
+    //         this.lines = eat(lines);
+    //         // this.seq = 0;
+    //         // this.rec = 0;
+    //     }
+
+    //     // StateUpdate(int seq, State state, PList<Line> lines) {
+    //     //     this.state = state;
+    //     //     this.lines = lines;
+    //     //     this.seq = seq;
+    //     //     // this.rec = rec;
+    //     // }
+
+    //     public boolean done() {
+    //         return this.lines.empty().join();
+    //     }
+
+    //     public Collection<StateUpdate> succs() {
+    //         if (done()) {
+    //             return Collections.emptyList();
+    //         }
+
+    //         var line = lines.head().join();
+    //         var tail = lines.tail();
+
+    //         Collection<StateUpdate> out = new ArrayList<>();
+
+    //         // apply and queue next state updates
+    //         for (MultiHeadState state : this.state.apply(line)) {
+    //             out.add(new StateUpdate(state, tail));
+    //         }
+
+    //         return out;
+    //     }
+
+    //     public MultiHeadState state() {
+    //         return state;
+    //     }
+
+    //     @Override
+    //     public int compareTo(StateUpdate o) {
+    //         if (done()) {
+    //             if (o.done()) {
+    //                 return 0;
+    //             } else {
+    //                 return -1;
+    //             }
+    //         }
+    //         if (o.done()) {
+    //             return 1;
+    //         }
+
+    //         int c = 0;
+
+    //         // c = Integer.compare(o.lines.head().join().index() - o.state.skips().size(), this.lines.head().join().index() - this.state.skips().size());
+    //         // if (c != 0) {
+    //         //     return c;
+    //         // }
+
+    //         c = Integer.compare(this.state.skips().size() / LOOK_AHEAD,
+    //                 o.state.skips().size() / LOOK_AHEAD);
+    //         if (c != 0) {
+    //             return c;
+    //         }
+
+    //         c = Integer.compare(this.state.paths().size(), o.state.paths().size());
+    //         if (c != 0) {
+    //             return c;
+    //         }
+
+    //         // final var thisMaxLength = this.state.paths().stream().map(matches -> matches.collect(Collectors.counting()).join()).collect(Collectors.maxBy(Long::compare));
+    //         // if (thisMaxLength.isPresent()) {
+    //         //     final var oMaxLength = o.state.paths().stream().map(matches -> matches.collect(Collectors.counting()).join()).collect(Collectors.maxBy(Long::compare));
+    //         //     if (oMaxLength.isPresent()) {
+    //         //         c = Long.compare(oMaxLength.get(), thisMaxLength.get());
+    //         //         if (c != 0) {
+    //         //             return c;
+    //         //         }
+    //         //     }
+    //         // }
+
+    //         c = Integer.compare(o.lines.head().join().index(), this.lines.head().join().index());
+    //         if (c != 0) {
+    //             return c;
+    //         }
+
+    //         // c = Integer.compare(this.rec, o.rec);
+    //         // if (c != 0) {
+    //         //     return c;
+    //         // }
+
+    //         // c = Integer.compare(this.seq, o.seq);
+    //         // if (c != 0) {
+    //         //     return c;
+    //         // }
+
+    //         return c;
+    //     }
+    // }
+
+    // private Promise<Collection<State>> run(State state, PList<Line> lines, int rec) {
+    //     Line line = lines.head().join();
+
+    //     Collection<State> out = new ArrayList<>();
+
+    //     for (State nextState : state.apply(line)) {
+    //         out.addAll(run(state, lines.tail(), rec + 1));
+    //     }
+    // }
 }

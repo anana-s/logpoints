@@ -4,16 +4,14 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public class Promise<T> implements Computation<T> {
+public interface Promise<T> extends Computation<T>, Ref<T> {
 
-    private enum State {
-        SCHEDULED,
-        PENDING,
-        RESOLVED
+    public enum State {
+        PENDING, RESOLVING, RESOLVED, REJECTED
     }
 
-    private State state;
-    private T value;
+    public State state();
+    public T resolve(T t);
 
     public static class Unresolved extends RuntimeException {
         Promise<?> promise;
@@ -25,25 +23,8 @@ public class Promise<T> implements Computation<T> {
         }
     }
 
-    private Promise() {
-        this.state = State.SCHEDULED;
-    }
-
-    private Promise(Consumer<Consumer<T>> function) {
-        this();
-        this.state = State.PENDING;
-        function.accept(this::resolve);
-    }
-
-    public void resolve(T t) {
-        if (!resolved()) {
-            value = t;
-            state = State.RESOLVED;
-        }
-    }
-
     public static <T> Promise<T> of(Consumer<Consumer<T>> function) {
-        return new Promise<>(function);
+        return new CachingPromise<>(function);
     }
 
     public static <T> Promise<T> just(T t) {
@@ -62,15 +43,69 @@ public class Promise<T> implements Computation<T> {
         return Promise.from(Computation.just(supplier));
     }
 
-    public static Promise<Void> lazy(Runnable runnable) {
-        return Promise.from(Computation.just(runnable));
-    }
-
     public static <T> Promise<T> from(Computation<T> computation) {
         return new ComputationAdapter<>(computation);
     }
 
-    public static class ComputationAdapter<T> extends Promise<T> {
+
+    public static class ResolvedPromise<T> implements Promise<T> {
+        private T value;
+
+        private ResolvedPromise(T t) {
+            value = t;
+        }
+
+        @Override
+        public T get() {
+            return value;
+        }
+
+        @Override
+        public State state() {
+            return State.RESOLVED;
+        }
+
+        @Override
+        public T resolve(T t) {
+            return t;
+        }
+    }
+
+    public static class CachingPromise<T> implements Promise<T> {
+        private State state;
+        private T value;
+
+        private CachingPromise() {
+            this.state = State.PENDING;
+        }
+
+        private CachingPromise(Consumer<Consumer<T>> function) {
+            this();
+            function.accept(this::resolve);
+        }
+
+        @Override
+        public T resolve(T t) {
+            if (!resolved()) {
+                value = t;
+                state = State.RESOLVED;
+            }
+            // otherwise do nothing;
+            return value;
+        }
+
+        @Override
+        public T get() {
+            return value;
+        }
+
+        @Override
+        public State state() {
+            return state;
+        }
+    }
+
+    public static class ComputationAdapter<T> extends CachingPromise<T> {
         Computation<T> c;
         ComputationAdapter(Computation<T> c) {
             this.c = c;
@@ -81,98 +116,88 @@ public class Promise<T> implements Computation<T> {
             switch(super.state) {
                 case RESOLVED:
                     return Continuation.apply(k, super.value);
-                case PENDING:
+                case RESOLVING:
                     throw new Unresolved(this);
-                case SCHEDULED:
+                case PENDING:
                     // continue computation
-                    super.state = State.PENDING;
-                    return Continuation.accept(c, k.map(s -> { resolve(s); return s;}));
+                    super.state = State.RESOLVING;
+                    return Continuation.accept(c, k.map(this::resolve));
                 default:
                     throw new RuntimeException(String.format("unexpected state [%s]", super.state));
             }
-            // try {
-            //     return super.accept(k);
-            // } catch (ExecutionException e) {
-            //     if (e.getCause() instanceof Unresolved) {
-            //         if (pending()) {
-            //             throw e;
-            //         }
-            //         super.state = State.PENDING;
-            //         return Continuation.accept(c, k.map(s -> {
-            //             resolve(s);
-            //             return s;
-            //         }));
-            //     }
-            //     throw e;
-            // }
         }
 
         @Override
-        public void resolve(T t) {
-            super.resolve(t);
-            c = null; // release computation
+        public T resolve(T t) {
+            try {
+                return super.resolve(t);
+            } finally {
+                c = null; // release computation
+            }
         }
     }
 
     @Override
-    public Continuation accept(Callback<T> k) {
+    public default Continuation accept(Callback<T> k) {
         if (resolved()) {
-            return Continuation.apply(k, value);
+            return Continuation.apply(k, get());
         } else {
             throw new Unresolved(this);
         }
     }
 
     @Override
-    public Promise<T> effect(Consumer<? super T> consumer) {
+    public default Promise<T> effect(Consumer<? super T> consumer) {
         return Promise.from(Computation.super.effect(consumer));
     }
 
     @Override
-    public <R> Promise<R> map(Function<? super T, ? extends R> f) {
+    public default <R> Promise<R> map(Function<? super T, ? extends R> f) {
         return Promise.from(Computation.super.map(f));
     }
 
     @Override
-    public <R> Promise<R> apply(Computation<? extends Function<? super T, ? extends R>> f) {
+    public default <R> Promise<R> apply(Computation<? extends Function<? super T, ? extends R>> f) {
         return Promise.from(Computation.super.apply(f));
     }
 
     @Override
-    public <S> Promise<S> bind(Function<? super T, ? extends Computation<S>> f) {
+    public default <S> Promise<S> bind(Function<? super T, ? extends Computation<S>> f) {
         return then(f);
     }
 
-    public <S> Promise<S> then(Function<? super T, ? extends Computation<S>> f) {
+    public default <S> Promise<S> then(Function<? super T, ? extends Computation<S>> f) {
         return Promise.from(Computation.super.bind(f));
     }
 
-    public boolean resolved() {
-        return state.equals(State.RESOLVED);
+    public default boolean resolved() {
+        return state().equals(State.RESOLVED);
     }
 
-    public boolean pending() {
-        return state.equals(State.PENDING);
+    public default boolean resolving() {
+        return state().equals(State.RESOLVING);
     }
 
-    public boolean done() {
-        return resolved();
+    public default boolean pending() {
+        return state().equals(State.PENDING);
     }
 
-    public State state() {
-        return state;
+    public default boolean rejected() {
+        return state().equals(State.REJECTED);
     }
 
-    public boolean scheduled() {
-        return state.equals(State.SCHEDULED);
+    public default boolean done() {
+        return resolved() || rejected();
     }
 
-    public Continuation continuation() {
+    public default Continuation continuation() {
         return this.accept(Callback.pure(this::resolve));
     }
 
-    public synchronized T join() {
-        Computation.super.run(this::resolve);
-        return value;
+    public default T join() {
+        synchronized (this) {
+            Computation.super.run(this::resolve);
+            return get();
+        }
     }
 }
