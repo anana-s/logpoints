@@ -10,7 +10,7 @@ import org.apache.commons.text.StringEscapeUtils;
 
 @Deprecated
 public class DotPrinter implements AutoCloseable {
-    private final Map<StmtMatcher, String> discovered;
+    private final Map<SerializedVertex, String> discovered;
     private final PrintStream out;
 
     DotPrinter(PrintStream out) {
@@ -21,7 +21,7 @@ public class DotPrinter implements AutoCloseable {
         this.out.println("    node [shape=box, style=\"rounded,bold\", fontname=\"helvetica\"]");
     }
 
-    public String discover(StmtMatcher vertex) {
+    public String discover(SerializedVertex vertex) {
         if (vertex == null) {
             return "root";
         }
@@ -34,7 +34,7 @@ public class DotPrinter implements AutoCloseable {
         return id;
     }
 
-    public void print(StmtMatcher from, StmtMatcher to) {
+    public void print(SerializedVertex from, SerializedVertex to) {
         StringBuilder s = new StringBuilder("    ");
         s.append(discover(from));
         s.append(" -> ");

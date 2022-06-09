@@ -13,20 +13,20 @@ import java.util.concurrent.Executors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import anana5.sense.logpoints.LogPoints.EntrypointNotFoundException;
+import anana5.sense.logpoints.Grapher.EntrypointNotFoundException;
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.impl.Arguments;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
 import net.sourceforge.argparse4j.inf.ArgumentParserException;
 import net.sourceforge.argparse4j.inf.Namespace;
 
-public class Server implements Callable<Void>, AutoCloseable {
-    private static final Logger log = LoggerFactory.getLogger(Server.class);
+public class GrapherServe implements Callable<Void>, AutoCloseable {
+    private static final Logger log = LoggerFactory.getLogger(GrapherServe.class);
     private final Socket socket;
     private final ObjectOutputStream out;
     private final ObjectInputStream in;
 
-    public Server(ServerSocket server) throws IOException {
+    public GrapherServe(ServerSocket server) throws IOException {
         this.socket = server.accept();
         this.out = new ObjectOutputStream(socket.getOutputStream());
         this.in = new ObjectInputStream(socket.getInputStream());
@@ -91,19 +91,19 @@ public class Server implements Callable<Void>, AutoCloseable {
             ns.getList("entrypoints")
         );
 
-        LogPoints.v().prepend(ns.getBoolean("prepend"));
-        LogPoints.v().classpath(ns.getString("classpath"));
-        LogPoints.v().modulepath(ns.getString("modulepath"));
-        LogPoints.v().include(ns.<String>getList("include"));
-        LogPoints.v().exclude(ns.<String>getList("exclude"));
+        Grapher.v().prepend(ns.getBoolean("prepend"));
+        Grapher.v().classpath(ns.getString("classpath"));
+        Grapher.v().modulepath(ns.getString("modulepath"));
+        Grapher.v().include(ns.<String>getList("include"));
+        Grapher.v().exclude(ns.<String>getList("exclude"));
         for (String entrypoint : ns.<String>getList("entrypoints")) {
-            LogPoints.v().entrypoint(entrypoint);
+            Grapher.v().entrypoint(entrypoint);
         }
         if (ns.getBoolean("disable_clinit")) {
-            LogPoints.v().clinit(false);
+            Grapher.v().clinit(false);
         }
         for (String tag : ns.<String>getList("tag")) {
-            LogPoints.v().tag(tag);
+            Grapher.v().tag(tag);
         }
 
         return ns;
@@ -130,7 +130,7 @@ public class Server implements Callable<Void>, AutoCloseable {
 
         executor.submit(() -> {
             try {
-                LogPoints.v().graph();
+                Grapher.v().get();
             } catch (Throwable e) {
                 e.printStackTrace();
                 executor.shutdownNow();
@@ -140,7 +140,7 @@ public class Server implements Callable<Void>, AutoCloseable {
         try (var socket = new ServerSocket(ns.getInt("port"))) {
             while (true) {
                 try {
-                    var task = new Server(socket);
+                    var task = new GrapherServe(socket);
                     log.debug("new connection");
                     executor.submit(task);
                 } catch (IOException e) {
@@ -160,9 +160,9 @@ public class Server implements Callable<Void>, AutoCloseable {
         log.debug("started");
         try {
             while (true) {
-                var req = (LogPointsRequest<?>)in.readObject();
+                var req = (GrapherRequest<?>)in.readObject();
                 log.debug("received {}", req);
-                var res = req.accept(LogPoints.v());
+                var res = req.accept(Grapher.v());
                 out.writeObject(res);
             }
         } catch (EOFException e) {

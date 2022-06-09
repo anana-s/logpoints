@@ -27,10 +27,10 @@ public class Count {
             Namespace ns = parser.parseArgs(args);
 
             // traverse graph
-            try (var client = RemoteSerialRefGraph.connect(ns.getString("address"))) {
+            try (var client = RemoteGraph.connect(ns.getString("address"))) {
                 var vcount = client.send(logpoints -> {
-                    var graph = logpoints.graph();
-                    var vertices = new HashSet<StmtMatcher>();
+                    var graph = logpoints.get();
+                    var vertices = new HashSet<SerializedVertex>();
                     for (var root : graph.roots()) {
                         if (root.returns() || root.sentinel() || vertices.contains(root)) {
                             continue;

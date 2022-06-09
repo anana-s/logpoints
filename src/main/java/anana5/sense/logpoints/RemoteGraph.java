@@ -14,28 +14,28 @@ import anana5.graph.Graph;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceMap;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap;
 
-public class RemoteSerialRefGraph implements Graph<StmtMatcher>, AutoCloseable {
+public class RemoteGraph implements Graph<SerializedVertex>, AutoCloseable {
     private final Socket socket;
     private final ObjectInputStream in;
     private final ObjectOutputStream out;
-    private final Long2ReferenceMap<List<StmtMatcher>> sources;
+    private final Long2ReferenceMap<List<SerializedVertex>> sources;
 
     public static final Pattern pattern = Pattern.compile("(?<host>[^:]+)(?::(?<port>\\d{1,5}))?");
 
-    private RemoteSerialRefGraph(String host, int port) throws IOException {
+    private RemoteGraph(String host, int port) throws IOException {
         this.socket = new Socket(host, port);
         this.out = new ObjectOutputStream(socket.getOutputStream());
         this.in = new ObjectInputStream(socket.getInputStream());
         this.sources = new Long2ReferenceOpenHashMap<>();
     }
 
-    public static RemoteSerialRefGraph connect(String address) throws IOException {
+    public static RemoteGraph connect(String address) throws IOException {
         Matcher matcher = pattern.matcher(address);
         if (!matcher.matches()) {
             throw new RuntimeException("invalid address: " + address);
         };
         matcher.group("host");
-        return new RemoteSerialRefGraph(matcher.group("host"), Integer.parseInt(matcher.group("port")));
+        return new RemoteGraph(matcher.group("host"), Integer.parseInt(matcher.group("port")));
     }
 
     @Override
@@ -45,13 +45,13 @@ public class RemoteSerialRefGraph implements Graph<StmtMatcher>, AutoCloseable {
         this.socket.close();
     }
 
-    public List<StmtMatcher> roots() {
+    public List<SerializedVertex> roots() {
         if (sources.containsKey(0)) {
             return sources.get(0);
         }
         try {
-            List<StmtMatcher> roots = send(logpoints -> {
-                final var graph = logpoints.graph();
+            List<SerializedVertex> roots = send(logpoints -> {
+                final var graph = logpoints.get();
                 return graph.roots();
             });
             sources.put(0, roots);
@@ -62,17 +62,17 @@ public class RemoteSerialRefGraph implements Graph<StmtMatcher>, AutoCloseable {
     }
 
     @Override
-    public List<StmtMatcher> from(StmtMatcher source) {
+    public List<SerializedVertex> from(SerializedVertex source) {
         return from(source.id());
     }
 
-    public List<StmtMatcher> from(long id) {
+    public List<SerializedVertex> from(long id) {
         if (sources.containsKey(id)) {
             return sources.get(id);
         }
         try {
             final var targets = send(logpoints -> {
-                final var graph = logpoints.graph();
+                final var graph = logpoints.get();
                 return graph.from(id);
             });
             sources.put(id, targets);
@@ -84,12 +84,12 @@ public class RemoteSerialRefGraph implements Graph<StmtMatcher>, AutoCloseable {
     }
 
     @Override
-    public Set<StmtMatcher> to(StmtMatcher target) {
+    public Set<SerializedVertex> to(SerializedVertex target) {
         throw new UnsupportedOperationException();
     }
 
     @SuppressWarnings("unchecked")
-    public <R extends Serializable> R send(LogPointsRequest<R> request) throws IOException {
+    public <R extends Serializable> R send(GrapherRequest<R> request) throws IOException {
         out.writeObject(request);
         out.flush();
         R result;

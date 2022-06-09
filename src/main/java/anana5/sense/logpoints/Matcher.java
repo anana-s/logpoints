@@ -8,11 +8,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Objects;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.Set;
@@ -26,7 +23,6 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import javax.swing.plaf.nimbus.State;
@@ -41,14 +37,13 @@ import anana5.util.ListF;
 import anana5.util.Maybe;
 import anana5.util.PList;
 import anana5.util.Promise;
-import anana5.util.Ref;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
 import net.sourceforge.argparse4j.inf.ArgumentParserException;
 import net.sourceforge.argparse4j.inf.Namespace;
 
-public class Matcher implements Callable<Collection<Matcher.State>> {
+public class Matcher implements Callable<Collection<State>> {
     private static final Logger log = LoggerFactory.getLogger(Match.class);
 
     public static void main(String[] args) {
@@ -77,7 +72,7 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
 
         // traverse graph
         try (var in = ns.<InputStream>get("input");
-                var graph = RemoteSerialRefGraph.connect(ns.get("address"))) {
+                var graph = RemoteGraph.connect(ns.get("address"))) {
             // create a plist of all logging statements
             var reader = new BufferedReader(new InputStreamReader(in));
             final var lines = PList.<Integer, Line>unfold(0, i -> {
@@ -112,8 +107,8 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
         }
     }
 
-    final Graph<StmtMatcher> graph;
-    final Collection<StmtMatcher> roots;
+    final Graph<SerializedVertex> graph;
+    final Collection<SerializedVertex> roots;
     final Pattern pattern;
 
     final PList<Line> lines;
@@ -123,7 +118,7 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
     final int MAX_HEADS = 3000;
     final int LOOK_AHEAD = 10;
 
-    private Matcher(Graph<StmtMatcher> graph, Collection<StmtMatcher> roots, PList<Line> lines,
+    private Matcher(Graph<SerializedVertex> graph, Collection<SerializedVertex> roots, PList<Line> lines,
             Pattern pattern) throws IOException {
         this.graph = graph;
         this.roots = roots;
@@ -164,211 +159,9 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
         return out;
     }
 
-    static final class Line implements Ref<String> {
-        private final int index;
-        private final String value;
-
-        Line(int index, String value) {
-            this.index = index;
-            this.value = value;
-        }
-
-        @Override
-        public String get() {
-            return value;
-        }
-
-        public int index() {
-            return index;
-        }
-
-        @Override
-        public String toString() {
-            return String.format("%d: %s", index, value);
-        }
-    }
-
-    final class Match {
-        private final StmtMatcher ref;
-        private final Line line;
-
-        Match(StmtMatcher ref, Line line) {
-            this.ref = ref;
-            this.line = line;
-        }
-
-        public StmtMatcher serial() {
-            return ref;
-        }
-
-        public Line line() {
-            return line;
-        }
-
-        @Override
-        public String toString() {
-            return String.format("%d ~ %s", ref.id(), line.toString());
-        }
-    }
-
-    class State implements SearchTree.State, Cloneable {
-        private PList<Line> lines;
-        private final List<Head> heads;
-        private final List<Line> skips;
-
-        private State(Collection<Head> heads, List<Line> skips, PList<Line> lines) {
-            this.heads = new ArrayList<>(heads);
-            this.skips = new ArrayList<>(skips);
-            this.lines = lines;
-        }
-
-        abstract class Action implements SearchTree.Action {
-            abstract void act(State state);
-
-            @Override
-            public void apply() {
-                act(State.this);
-            }
-            @Override
-            public State simulate() {
-                State out = State.this.clone();
-                act(out);
-                return out;
-            }
-        }
-
-        class SkipAction extends Action {
-            @Override
-            void act(State state) {
-                state.skips.add(state.advance());
-            }
-
-            @Override
-            public float heuristic() {
-                return -1;
-            }
-        }
-
-        class NextStateAction extends Action {
-            private final int idx;
-
-            NextStateAction(int idx) {
-                this.idx = idx;
-            }
-
-            @Override
-            void act(State state) {
-                Head head = state.head(idx);
-                head.accept(state.advance());
-            }
-
-            @Override
-            public float heuristic() {
-                return 0;
-            }
-        }
-
-        @Override
-        public float heuristic() {
-            throw new NotImplementedException("TODO");
-        }
-
-        @Override
-        public Collection<Action> actions() {
-            Collection<Action> actions = new ArrayList<>();
-            actions.add(new SkipAction());
-            return actions;
-        }
-
-        Line advance() {
-            var line = lines.head().join();
-            lines = lines.tail();
-            return line;
-        }
-
-        public Collection<Group> groups() {
-            return heads.stream().map(head -> head.group).distinct().collect(Collectors.toList());
-        }
-
-        public Head head(int i) {
-            return heads.get(i);
-        }
-
-        @Override
-        public State clone() {
-            return new State(heads, skips, lines);
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            if (obj == null) {
-                return false;
-            }
-            if (obj == this) {
-                return true;
-            }
-            if (obj.getClass() != getClass()) {
-                return false;
-            }
-            State other = (State) obj;
-            return Objects.equals(heads, other.heads);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(heads);
-        }
-
-    }
-
-    class Group {
-        final List<Match> matches;
-
-        Group(List<Match> matches) {
-            this.matches = new ArrayList<>(matches);
-        }
-
-        void add(Match match) {
-            this.matches.add(match);
-        } 
-
-        @Override
-        public String toString() {
-            return matches.toString();
-        }
-
-        @Override
-        protected Group clone() {
-            return new Group(matches);
-        }
-    }
-
-    class Head {
-        private final StmtMatcher stmt;
-        private final Group group;
-
-        Head(StmtMatcher stmt, Group group) {
-            this.stmt = stmt;
-            this.group = group;
-        }
-
-        public List<Head> accept(Line line) {
-            List<Head> out = new ArrayList<>();
-            match(stmt, line).map(match -> {
-                for (StmtMatcher next : graph.from(match.serial())) {
-                    Group group = this.group.clone();
-                    group.add(match);
-                    out.add(new Head(next, group));
-                }
-                return null;
-            });
-            return Collections.unmodifiableList(out);
-        }
-    }
-
-    private Set<StmtMatcher> flatten(Collection<StmtMatcher> matchers, int rec) {
-        Set<StmtMatcher> out = new HashSet<>();
-        for (StmtMatcher matcher : matchers) {
+    private Set<SerializedVertex> flatten(Collection<SerializedVertex> matchers, int rec) {
+        Set<SerializedVertex> out = new HashSet<>();
+        for (SerializedVertex matcher : matchers) {
             if (matcher.sentinel()) {
                 if (rec == 0) {
                     continue;
@@ -382,7 +175,8 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
         return out;
     }
 
-    Maybe<Match> match(StmtMatcher serial, Line line) {
+    Maybe<Match> match(SerializedVertex serial, Line line) {
+        SourceMapTag smap = serial.tag();
         var matcher = pattern.matcher(line.get());
 
         if (!matcher.find()) {
@@ -393,8 +187,8 @@ public class Matcher implements Callable<Collection<Matcher.State>> {
         var sourceFile = matcher.group("s");
         var lineNumber = Integer.valueOf(matcher.group("l")).intValue();
 
-        if (serial.method().equals(methodName) && serial.source().equals(sourceFile)
-                && serial.line() == lineNumber) {
+        if (smap.method().equals(methodName) && smap.source().equals(sourceFile)
+                && smap.line() == lineNumber) {
             return Maybe.just(new Match(serial, line));
         } else {
             return Maybe.nothing();

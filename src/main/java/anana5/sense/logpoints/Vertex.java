@@ -1,39 +1,50 @@
 package anana5.sense.logpoints;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
+
 import soot.jimple.Stmt;
 import soot.jimple.internal.JReturnVoidStmt;
 
-public interface Box extends anana5.util.Ref<Stmt> {
-
+public interface Vertex extends anana5.util.Ref<Stmt> {
     boolean returns();
-    Box copy();
+
+    Vertex copy();
+
     default boolean sentinel() {
         return !check();
     }
 
-    public static Box of(Stmt stmt) {
+    List<String> args();
+
+    SourceMapTag tag();
+
+    public static Vertex of(Stmt stmt) {
         if (stmt == null) {
             return of();
-        } else if (LogPoints.isReturn(stmt)) {
+        } else if (Grapher.isReturn(stmt)) {
             return ret();
         } else {
             return new SimpleBox(stmt);
         }
     }
 
-    public static Box of(Box other) {
+    public static Vertex of(Vertex other) {
         return other.copy();
     }
 
-    public static Box of() {
+    public static Vertex of() {
         return SentinelBox.instance;
     }
 
-    public static Box ret() {
+    public static Vertex ret() {
         return ReturnBox.instance;
     }
 
-    public static class ReturnBox implements Box {
+    public static class ReturnBox implements Vertex {
         private static final Stmt stmt = new JReturnVoidStmt();
         private static final ReturnBox instance = new ReturnBox();
 
@@ -53,12 +64,22 @@ public interface Box extends anana5.util.Ref<Stmt> {
         }
 
         @Override
-        public Box copy() {
+        public Vertex copy() {
             return this;
+        }
+
+        @Override
+        public SourceMapTag tag() {
+            return new SourceMapTag("", "", -1);
+        }
+
+        @Override
+        public List<String> args() {
+            return Collections.singletonList("return");
         }
     }
 
-    public static class SentinelBox implements Box {
+    public static class SentinelBox implements Vertex {
         private static final SentinelBox instance = new SentinelBox();
 
         @Override
@@ -72,7 +93,7 @@ public interface Box extends anana5.util.Ref<Stmt> {
         }
 
         @Override
-        public Box copy() {
+        public Vertex copy() {
             return this;
         }
 
@@ -80,9 +101,19 @@ public interface Box extends anana5.util.Ref<Stmt> {
         public String toString() {
             return "sentinel";
         }
+
+        @Override
+        public SourceMapTag tag() {
+            return new SourceMapTag("", "", -1);
+        }
+
+        @Override
+        public List<String> args() {
+            return Collections.singletonList("sentinel");
+        }
     }
 
-    public static class SimpleBox implements Box {
+    public static class SimpleBox implements Vertex {
         private final Stmt stmt;
 
         private SimpleBox(Stmt stmt) {
@@ -98,6 +129,12 @@ public interface Box extends anana5.util.Ref<Stmt> {
                 throw new IllegalArgumentException("stmt must invoke");
             }
             this.stmt = stmt;
+        }
+
+        @Override
+        public SourceMapTag tag() {
+            SourceMapTag tag = (SourceMapTag)stmt.getTag("SourceMapTag");
+            return tag;
         }
 
         @Override
@@ -118,8 +155,18 @@ public interface Box extends anana5.util.Ref<Stmt> {
         }
 
         @Override
-        public Box copy() {
+        public Vertex copy() {
             return this;
+        }
+
+        @Override
+        public List<String> args() {
+            var out = new ArrayList<String>();
+            out.add(stmt.getInvokeExpr().getMethodRef().getName());
+            for (var arg : stmt.getInvokeExpr().getArgs()) {
+                out.add(arg.toString());
+            }
+            return out;
         }
     }
 }

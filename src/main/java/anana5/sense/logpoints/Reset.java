@@ -24,7 +24,7 @@ public class Reset {
             return;
         }
 
-        try (var client = RemoteSerialRefGraph.connect(ns.getString("address"))) {
+        try (var client = RemoteGraph.connect(ns.getString("address"))) {
             client.send(logpoints -> {
                 logpoints.reset();
                 return null;

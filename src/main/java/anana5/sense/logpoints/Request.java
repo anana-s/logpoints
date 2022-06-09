@@ -6,8 +6,8 @@ import java.util.function.Function;
 @FunctionalInterface
 public interface Request<T, R extends Serializable> extends Serializable, Function<T, R> {
     @Override
-    default R apply(T graph) {
-        return accept(graph);
+    default R apply(T t) {
+        return accept(t);
     }
-    R accept(T graph);
+    R accept(T t);
 }

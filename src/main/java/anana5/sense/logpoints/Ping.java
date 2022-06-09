@@ -40,7 +40,7 @@ public class Ping {
 
             log.debug("pinging {} with {} ms interval", address, interval);
 
-            RemoteSerialRefGraph client = null;
+            RemoteGraph client = null;
             while (true) {
                 try {
                     Thread.sleep(interval);
@@ -55,7 +55,7 @@ public class Ping {
 
                 if (client == null) {
                     try {
-                        client = RemoteSerialRefGraph.connect(address);
+                        client = RemoteGraph.connect(address);
                     } catch (IOException e) {
                         log.error("connection refused");
                         continue;

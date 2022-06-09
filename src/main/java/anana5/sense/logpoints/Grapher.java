@@ -15,7 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import anana5.graph.rainfall.Drop;
 import anana5.graph.rainfall.Rain;
-import anana5.sense.logpoints.Box;
+import anana5.sense.logpoints.Vertex;
 import anana5.util.PList;
 import anana5.util.Promise;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -41,18 +41,18 @@ import soot.options.Options;
 import soot.tagkit.SourceFileTag;
 import soot.toolkits.graph.ExceptionalUnitGraph;
 
-public class LogPoints {
+public class Grapher {
 
     /**
      * config
      */
 
-    private static Logger logger = LoggerFactory.getLogger(LogPoints.class);
-    private static LogPoints instance = null;
+    private static Logger logger = LoggerFactory.getLogger(Grapher.class);
+    private static Grapher instance = null;
     private static Transform cpf = PackManager.v().getPack("jop").get("jop.cpf");
-    public static LogPoints v() {
+    public static Grapher v() {
         if (instance == null) {
-            instance = new LogPoints();
+            instance = new Grapher();
         }
         return instance;
     }
@@ -60,7 +60,7 @@ public class LogPoints {
     private List<SootMethod> targets = new ArrayList<>();
     private boolean clinit = true;
 
-    public LogPoints configure() {
+    public Grapher configure() {
         try {
             Options.v().set_output_dir(Files.createTempDirectory("soot").toString());
         } catch (IOException e) {
@@ -122,22 +122,22 @@ public class LogPoints {
         return this;
     }
 
-    public LogPoints prepend(boolean should) {
+    public Grapher prepend(boolean should) {
         Options.v().set_prepend_classpath(should);
         return this;
     }
 
-    public LogPoints classpath(String classpath) {
+    public Grapher classpath(String classpath) {
         Options.v().set_soot_classpath(classpath);
         return this;
     }
 
-    public LogPoints modulepath(String modulepath) {
+    public Grapher modulepath(String modulepath) {
         Options.v().set_soot_modulepath(modulepath);
         return this;
     }
 
-    public LogPoints clinit(boolean should) {
+    public Grapher clinit(boolean should) {
         this.clinit = should;
         return this;
     }
@@ -165,7 +165,7 @@ public class LogPoints {
         return out;
     }
 
-    public LogPoints entrypoint(String cls) throws EntrypointNotFoundException {
+    public Grapher entrypoint(String cls) throws EntrypointNotFoundException {
 
         List<String> path = Arrays.asList(cls.split("\\."));
         SootClass sootClass;
@@ -192,34 +192,34 @@ public class LogPoints {
         return this;
     }
 
-    public LogPoints include(List<String> inclusions) {
+    public Grapher include(List<String> inclusions) {
         Options.v().set_include(inclusions);
         return this;
     }
 
-    public LogPoints exclude(List<String> exclusions) {
+    public Grapher exclude(List<String> exclusions) {
         Options.v().set_exclude(exclusions);
         return this;
     }
 
-    private LogPoints() {
+    private Grapher() {
         // make sure to configure soot
         this.configure();
     }
 
-    public LogPoints tag(Pattern pattern) {
+    public Grapher tag(Pattern pattern) {
         tags.add(pattern);
         return this;
     }
 
-    public LogPoints tag(int flags, String... patterns) {
+    public Grapher tag(int flags, String... patterns) {
         for (String pattern : patterns) {
             tag(Pattern.compile(pattern, flags));
         }
         return this;
     }
 
-    public LogPoints tag(String... patterns) {
+    public Grapher tag(String... patterns) {
         for (String pattern : patterns) {
             tag(Pattern.compile(pattern));
         }
@@ -230,27 +230,23 @@ public class LogPoints {
      * RainGraph builder
      */
 
-    private final Map<SootMethod, Rain<Box>> done = new Object2ReferenceOpenHashMap<>();
-    private SerialRefRainGraph graph;
+    private final Map<SootMethod, Rain<Vertex>> done = new Object2ReferenceOpenHashMap<>();
+    private Graph graph;
     private CallGraph cg;
 
-    private synchronized void setGraph(SerialRefRainGraph graph) {
-        this.graph = graph;
-    }
-
-    public synchronized SerialRefRainGraph graph() {
+    public synchronized Graph get() {
         if (graph == null) {
-            setGraph(new SerialRefRainGraph(build()));
+            graph = new Graph(build());
         }
         return graph;
     }
 
-    public void reset() {
+    public synchronized void reset() {
         done.clear();
-        setGraph(null);
+        this.graph = null;
     }
 
-    protected synchronized final Rain<Box> build() {
+    protected synchronized final Rain<Vertex> build() {
         if (this.cg == null) {
             Scene.v().setEntryPoints(targets);
             Scene.v().loadNecessaryClasses();
@@ -283,7 +279,7 @@ public class LogPoints {
         SootMethodRef methodRef = stmt.getInvokeExpr().getMethodRef();
         SootClass declaringClass = methodRef.getDeclaringClass();
         String target = declaringClass.getName() + "." + methodRef.getName();
-        for (Pattern pattern : LogPoints.this.tags) {
+        for (Pattern pattern : Grapher.this.tags) {
             if (pattern.matcher(target).find()) {
                 return true;
             }
@@ -291,16 +287,16 @@ public class LogPoints {
         return false;
     }
 
-    private final Rain<Box> build(Stmt invoker, PList<SootMethod> methods, ObjectSet<SootMethod> strand) {
+    private final Rain<Vertex> build(Stmt invoker, PList<SootMethod> methods, ObjectSet<SootMethod> strand) {
         final var mr = Rain.merge(methods.map(m -> build(invoker, m, strand)));
         return deduplicate(mr);
     }
 
-    private final Rain<Box> build(Stmt invoker, SootMethod method, ObjectSet<SootMethod> strand) {
+    private final Rain<Vertex> build(Stmt invoker, SootMethod method, ObjectSet<SootMethod> strand) {
         if (done.containsKey(method)) {
             if (strand.contains(method)) {
                 logger.trace("{} added sentinel", format(method));
-                return Rain.of(Drop.of(Box.of(), done.get(method)));
+                return Rain.of(Drop.of(Vertex.of(), done.get(method)));
             } else {
                 logger.trace("{} loaded from cache", format(method));
                 return done.get(method);
@@ -322,7 +318,7 @@ public class LogPoints {
     class CFGFactory {
         private final SootMethod method;
         private final ExceptionalUnitGraph cfg;
-        private final Map<Stmt, Rain<Box>> memo;
+        private final Map<Stmt, Rain<Vertex>> memo;
         // private final Map<Tuple<Stmt, Ref>, Rain<Ref>> connector;
         private final String methodName;
         private final String sourceFile;
@@ -331,7 +327,7 @@ public class LogPoints {
             if (!(body instanceof JimpleBody)) {
                 throw new RuntimeException("unsupported body type " + body.getClass());
             }
-            LogPoints.cpf.apply(body);
+            Grapher.cpf.apply(body);
             this.method = body.getMethod();
             this.cfg = new ExceptionalUnitGraph(body);
             this.memo = new Object2ReferenceOpenHashMap<>();
@@ -353,18 +349,18 @@ public class LogPoints {
             return stmt;
         }
 
-        public final Rain<Box> build(ObjectSet<SootMethod> cgstrand) {
+        public final Rain<Vertex> build(ObjectSet<SootMethod> cgstrand) {
             final var stmts = PList.from(cfg.getHeads()).map(unit -> (Stmt)unit);
             final var rain = build(null, stmts, new ObjectOpenHashSet<>(), cgstrand);
             return rain;
         }
 
-        private final Rain<Box> build(Stmt pred, PList<Stmt> stmts, ObjectSet<Stmt> cfgstrand, ObjectSet<SootMethod> cgstrand) {
+        private final Rain<Vertex> build(Stmt pred, PList<Stmt> stmts, ObjectSet<Stmt> cfgstrand, ObjectSet<SootMethod> cgstrand) {
             final var drops = stmts.flatmap(stmt -> build(pred, stmt, cfgstrand, cgstrand).unfix());
             return deduplicate(Rain.fix(drops));
         }
 
-        private final Rain<Box> build(Stmt pred, Stmt stmt, ObjectSet<Stmt> cfgstrand, ObjectSet<SootMethod> cgstrand) {
+        private final Rain<Vertex> build(Stmt pred, Stmt stmt, ObjectSet<Stmt> cfgstrand, ObjectSet<SootMethod> cgstrand) {
             if (memo.containsKey(stmt)) {
                 logger.trace("{} loaded from cache", format(method, stmt));
                 return memo.get(stmt);
@@ -378,7 +374,7 @@ public class LogPoints {
             if (isReturn(stmt)) {
                 logger.trace("{} returned", format(method, stmt));
                 tag(stmt);
-                var rain = Rain.of(Drop.of(Box.ret(), Rain.of()));
+                var rain = Rain.of(Drop.of(Vertex.ret(), Rain.of()));
                 memo.put(stmt, rain);
                 return rain;
             }
@@ -426,7 +422,7 @@ public class LogPoints {
                 logger.trace("{} matched", format(method, stmt));
                 tag(stmt);
                 var nextRain = build(stmt, next, new ObjectOpenHashSet<>(), cgstrand);
-                var rain = Rain.of(Drop.of(Box.of(stmt), nextRain));
+                var rain = Rain.of(Drop.of(Vertex.of(stmt), nextRain));
                 memo.put(stmt, rain);
                 return rain;
             }
@@ -448,7 +444,7 @@ public class LogPoints {
                     logger.warn("{} resolves to {} methods", format(method, stmt), count);
                 }
 
-                final var subrain = LogPoints.this.build(stmt, methods, cgstrand);
+                final var subrain = Grapher.this.build(stmt, methods, cgstrand);
 
 
                 cfgstrand.add(stmt);
@@ -477,7 +473,7 @@ public class LogPoints {
         }
     }
 
-    private static Rain<Box> connect(Rain<Box> rain, Rain<Box> rets) {
+    private static Rain<Vertex> connect(Rain<Vertex> rain, Rain<Vertex> rets) {
         return rain.fold(drops -> Rain.merge(drops.map(drop -> {
             if (drop.get().returns()) {
                 return rets;
@@ -486,8 +482,8 @@ public class LogPoints {
         })));
     }
 
-    private static Rain<Box> copy(Rain<Box> rain) {
-        Map<Box, Drop<Box, Rain<Box>>> memo = new Object2ObjectOpenHashMap<>();
+    private static Rain<Vertex> copy(Rain<Vertex> rain) {
+        Map<Vertex, Drop<Vertex, Rain<Vertex>>> memo = new Object2ObjectOpenHashMap<>();
         return rain.fold(drops -> Rain.fix(drops.map(drop -> memo.computeIfAbsent(drop.get(), box -> Drop.of(box.copy(), drop.next())))));
     }
 
@@ -506,7 +502,7 @@ public class LogPoints {
      * @param rain
      * @return
      */
-    private static Rain<Box> deduplicate(Rain<Box> rain) {
+    private static Rain<Vertex> deduplicate(Rain<Vertex> rain) {
         final var drops = rain.unfix();
         return Rain.bind(drops.count().map(count -> {
             if (count == 1) {
@@ -525,8 +521,8 @@ public class LogPoints {
      * deduplicates plist of drops with the same stmt
      */
 
-    private static PList<Drop<Box, Rain<Box>>> deduplicate(long count, PList<Drop<Box, Rain<Box>>> drops) {
-        final var reduced = new Object2ReferenceOpenHashMap<Stmt, List<Rain<Box>>>();
+    private static PList<Drop<Vertex, Rain<Vertex>>> deduplicate(long count, PList<Drop<Vertex, Rain<Vertex>>> drops) {
+        final var reduced = new Object2ReferenceOpenHashMap<Stmt, List<Rain<Vertex>>>();
         return PList.bind(drops.foldr(Promise.nil(), (promise, drop) -> {
             final var ref = drop.get();
             final var list = reduced.computeIfAbsent(ref.get(), stmt -> new ArrayList<>());
@@ -537,7 +533,7 @@ public class LogPoints {
                 return drops;
             }
             return PList.from(reduced.entrySet()).map(entry -> {
-                final Box ref = Box.of(entry.getKey());
+                final Vertex ref = Vertex.of(entry.getKey());
                 final var list = entry.getValue();
                 if (list.size() == 1) {
                     return Drop.of(ref, list.get(0));
