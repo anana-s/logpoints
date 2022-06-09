@@ -58,10 +58,10 @@ class State implements SearchTree.State {
     @Override
     public Collection<SearchTree.Action> actions() {
         Collection<SearchTree.Action> actions = new ArrayList<>();
-        actions.add(new OneshotAction(new SkipAction()));
+        actions.add(new SkipAction());
 
         for (int i = 0; i < heads.size(); i++) {
-            actions.add(new OneshotAction(new NextStateAction(i)));
+            actions.add(new NextStateAction(i));
         }
 
         return actions;
