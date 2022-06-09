@@ -4,13 +4,17 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-class Head {
+class Head implements Cloneable {
     /**
      *
      */
     private final Matcher matcher;
     private final SerializedVertex stmt;
     final Group group;
+
+    Head(Matcher matcher, SerializedVertex stmt) {
+        this(matcher, stmt, new Group());
+    }
 
     Head(Matcher matcher, SerializedVertex stmt, Group group) {
         this.matcher = matcher;
@@ -29,5 +33,9 @@ class Head {
             return null;
         });
         return Collections.unmodifiableList(out);
+    }
+
+    public Head clone() {
+        return new Head(this.matcher, this.stmt, this.group.clone());
     }
 }

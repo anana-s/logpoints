@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.Set;
@@ -23,9 +24,8 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import javax.swing.plaf.nimbus.State;
 
 import com.google.common.collect.MinMaxPriorityQueue;
 import org.apache.commons.lang3.NotImplementedException;
@@ -129,6 +129,12 @@ public class Matcher implements Callable<Collection<State>> {
     public Collection<State> call() throws IOException {
         // main loop
         final Collection<State> out = new ArrayList<>();
+
+        List<Head> heads = roots.stream().map(v -> new Head(this, v)).collect(Collectors.toCollection(ArrayList::new));
+
+        SearchTree search = new SearchTree(new State(heads, lines));
+
+        //TODO: run the search
 
         // final Queue<StateUpdate> queue = MinMaxPriorityQueue.maximumSize(MAX_QUEUE_SIZE).create();
 

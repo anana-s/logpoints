@@ -2,10 +2,11 @@ package anana5.sense.logpoints;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
-
+import anana5.sense.logpoints.SearchTree.Action;
 import anana5.util.PList;
 
 class State implements SearchTree.State {
@@ -13,21 +14,44 @@ class State implements SearchTree.State {
     private final List<Head> heads;
     private final List<Line> skips;
 
-    private State(Collection<Head> heads, List<Line> skips, PList<Line> lines) {
+    State(List<Head> roots, PList<Line> lines) {
+        this(roots, Collections.emptyList(), lines);
+    }
+
+    State(List<Head> heads, List<Line> skips, PList<Line> lines) {
         this.heads = new ArrayList<>(heads);
         this.skips = new ArrayList<>(skips);
         this.lines = lines;
     }
 
+    @Override
+    public Collection<Action> actions() {
+        Collection<SearchTree.Action> actions = new ArrayList<>();
+        OneshotAction.Context context = new OneshotAction.Context();
+        actions.add(context.oneshot(new SkipAction()));
+
+        for (int i = 0; i < heads.size(); i++) {
+            actions.add(context.oneshot(new NextStateAction(i)));
+        }
+
+        return actions;
+    }
+
     class SkipAction implements SearchTree.Action {
         @Override
-        public void apply() {
+        public State apply() {
             skips.add(advance());
+            return State.this;
         }
 
         @Override
         public float evaluate() {
             return -1;
+        }
+
+        @Override
+        public SkipAction clone() {
+            return State.this.clone().new SkipAction();
         }
     }
 
@@ -39,9 +63,10 @@ class State implements SearchTree.State {
         }
 
         @Override
-        public void apply() {
+        public State apply() {
             Head head = head(idx);
             head.accept(advance());
+            return State.this;
         }
 
         @Override
@@ -49,24 +74,16 @@ class State implements SearchTree.State {
             //TODO: implement
             return 0;
         }
+
+        @Override
+        public NextStateAction clone() {
+            return State.this.clone().new NextStateAction(idx);
+        }
     }
 
     @Override
     public float evaluate() {
         return 0;
-    }
-
-    @Override
-    public Collection<SearchTree.Action> actions() {
-        Collection<SearchTree.Action> actions = new ArrayList<>();
-        OneshotAction.Context context = new OneshotAction.Context();
-        actions.add(context.oneshot(new SkipAction()));
-
-        for (int i = 0; i < heads.size(); i++) {
-            actions.add(context.oneshot(new NextStateAction(i)));
-        }
-
-        return actions;
     }
 
     Line line() {
@@ -87,9 +104,8 @@ class State implements SearchTree.State {
         return heads.get(i);
     }
 
-    @Override
     public State clone() {
-        return new State(heads, skips, lines);
+        return new State(heads.stream().map(Head::clone).collect(Collectors.toList()), skips, lines);
     }
 
     @Override
@@ -104,12 +120,12 @@ class State implements SearchTree.State {
             return false;
         }
         State other = (State) obj;
-        return Objects.equals(heads, other.heads);
+        return compareTo(other) == 0;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(heads);
+        return Objects.hash(heads, skips);
     }
 
 }

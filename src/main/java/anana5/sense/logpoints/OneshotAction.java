@@ -1,7 +1,6 @@
 package anana5.sense.logpoints;
 
 import anana5.sense.logpoints.SearchTree.Action;
-import anana5.util.Ref;
 
 class OneshotAction implements Action {
     private final Context context;
@@ -23,30 +22,45 @@ class OneshotAction implements Action {
     }
 
     @Override
-    public void apply() {
+    public SearchTree.State apply() {
         if (!context.done()) {
-            delegate.apply();
-            context.set();
+            SearchTree.State state = delegate.apply();
+            context.set(state);
+            return state;
         }
+        return context.state();
+    }
+
+    @Override
+    public Action clone() {
+        return new OneshotAction(delegate.clone(), context);
     }
 
     static class Context {
-        private boolean done;
+        private SearchTree.State state;
 
         public Context() {
-            this.done = false;
+            this.state = null;
         }
         
-        void set() {
-            this.done = true;
+        void set(SearchTree.State state) {
+            this.state = state;
         }
 
         boolean done() {
-            return done;
+            return state != null;
+        }
+
+        SearchTree.State state() {
+            return state;
         }
 
         public Action oneshot(Action action) {
             return new OneshotAction(action, this);
+        }
+
+        Action clone(Action action) {
+            return new OneshotAction(action.clone(), this);
         }
     }
 }

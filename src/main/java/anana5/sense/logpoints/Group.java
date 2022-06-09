@@ -6,6 +6,10 @@ import java.util.List;
 class Group {
     final List<Match> matches;
 
+    Group() {
+        this.matches = new ArrayList<>();
+    }
+
     Group(List<Match> matches) {
         this.matches = new ArrayList<>(matches);
     }
