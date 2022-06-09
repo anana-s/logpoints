@@ -46,6 +46,7 @@ class State implements SearchTree.State {
 
         @Override
         public float evaluate() {
+            //TODO: implement
             return 0;
         }
     }
@@ -58,13 +59,18 @@ class State implements SearchTree.State {
     @Override
     public Collection<SearchTree.Action> actions() {
         Collection<SearchTree.Action> actions = new ArrayList<>();
-        actions.add(new SkipAction());
+        OneshotAction.Context context = new OneshotAction.Context();
+        actions.add(context.oneshot(new SkipAction()));
 
         for (int i = 0; i < heads.size(); i++) {
-            actions.add(new NextStateAction(i));
+            actions.add(context.oneshot(new NextStateAction(i)));
         }
 
         return actions;
+    }
+
+    Line line() {
+        return lines.head().join();
     }
 
     Line advance() {
