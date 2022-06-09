@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -15,10 +14,9 @@ import org.slf4j.LoggerFactory;
 
 import anana5.graph.rainfall.Drop;
 import anana5.graph.rainfall.Rain;
-import anana5.sense.logpoints.Vertex;
 import anana5.util.PList;
 import anana5.util.Promise;
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+// import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ReferenceOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
@@ -482,10 +480,10 @@ public class Grapher {
         })));
     }
 
-    private static Rain<Vertex> copy(Rain<Vertex> rain) {
-        Map<Vertex, Drop<Vertex, Rain<Vertex>>> memo = new Object2ObjectOpenHashMap<>();
-        return rain.fold(drops -> Rain.fix(drops.map(drop -> memo.computeIfAbsent(drop.get(), box -> Drop.of(box.copy(), drop.next())))));
-    }
+    // private static Rain<Vertex> copy(Rain<Vertex> rain) {
+    //     Map<Vertex, Drop<Vertex, Rain<Vertex>>> memo = new Object2ObjectOpenHashMap<>();
+    //     return rain.fold(drops -> Rain.fix(drops.map(drop -> memo.computeIfAbsent(drop.get(), box -> Drop.of(box.copy(), drop.next())))));
+    // }
 
     // private static Rain<Ref> copy(Box box, Rain<Ref> rain) {
     //     final var memo = new HashMap<Ref, Ref>();

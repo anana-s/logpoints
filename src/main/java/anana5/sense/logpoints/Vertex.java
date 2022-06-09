@@ -1,10 +1,8 @@
 package anana5.sense.logpoints;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import soot.jimple.Stmt;
 import soot.jimple.internal.JReturnVoidStmt;
