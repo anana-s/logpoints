@@ -1,8 +1,6 @@
 package anana5.graph.rainfall;
 
 import java.util.function.Function;
-import anana5.fn.Fix;
-import anana5.fn.H;
 import anana5.util.PList;
 import anana5.util.Promise;
 

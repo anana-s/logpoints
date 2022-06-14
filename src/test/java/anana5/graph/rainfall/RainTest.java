@@ -13,8 +13,6 @@ import anana5.util.Promise;
 
 public class RainTest {
 
-    private final PList<Integer> a = PList.of(1, 2, 3);
-
     private final Supplier<Rain<Integer>> graph = () -> Rain.of(
         Drop.of(1, Rain.of(
             Drop.of(2, Rain.of(

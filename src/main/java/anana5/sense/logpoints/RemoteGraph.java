@@ -18,7 +18,7 @@ public class RemoteGraph implements Graph<GrapherVertex>, AutoCloseable {
     private final Socket socket;
     private final ObjectInputStream in;
     private final ObjectOutputStream out;
-    private final Long2ReferenceMap<List<SerializedVertex>> sources;
+    private final Long2ReferenceMap<List<GrapherVertex>> sources;
 
     public static final Pattern pattern = Pattern.compile("(?<host>[^:]+)(?::(?<port>\\d{1,5}))?");
 
@@ -45,12 +45,12 @@ public class RemoteGraph implements Graph<GrapherVertex>, AutoCloseable {
         this.socket.close();
     }
 
-    public List<SerializedVertex> roots() {
+    public List<GrapherVertex> roots() {
         if (sources.containsKey(0)) {
             return sources.get(0);
         }
         try {
-            List<SerializedVertex> roots = send(logpoints -> {
+            List<GrapherVertex> roots = send(logpoints -> {
                 final var graph = logpoints.get();
                 return graph.roots();
             });
@@ -62,11 +62,11 @@ public class RemoteGraph implements Graph<GrapherVertex>, AutoCloseable {
     }
 
     @Override
-    public List<SerializedVertex> from(GrapherVertex source) {
+    public List<GrapherVertex> from(GrapherVertex source) {
         return from(source.id());
     }
 
-    public List<SerializedVertex> from(long id) {
+    public List<GrapherVertex> from(long id) {
         if (sources.containsKey(id)) {
             return sources.get(id);
         }
@@ -84,7 +84,7 @@ public class RemoteGraph implements Graph<GrapherVertex>, AutoCloseable {
     }
 
     @Override
-    public Set<SerializedVertex> to(GrapherVertex target) {
+    public Set<GrapherVertex> to(GrapherVertex target) {
         throw new UnsupportedOperationException();
     }
 

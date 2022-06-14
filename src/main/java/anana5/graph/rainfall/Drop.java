@@ -1,7 +1,5 @@
 package anana5.graph.rainfall;
 
-import anana5.fn.H;
-
 public class Drop<T, A> {
 
     final private T v;

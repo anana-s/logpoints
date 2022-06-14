@@ -377,7 +377,6 @@ public class Grapher {
                 return rain;
             }
 
-            //TODO handle exceptional dests;
             final var next = PList.from(cfg.getSuccsOf(stmt)).map(unit -> (Stmt)unit);
 
             if (!stmt.containsInvokeExpr() || stmt.getInvokeExpr().getMethodRef().getDeclaringClass().getName().equals("java.lang.Object")) {

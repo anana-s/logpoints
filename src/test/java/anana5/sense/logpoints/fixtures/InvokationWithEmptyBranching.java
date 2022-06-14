@@ -6,7 +6,7 @@ import java.util.Random;
 
 public class InvokationWithEmptyBranching {
     static Random rng = new Random();
-    static void test1() {
+    static void test1(String str) {
         if (rng.nextBoolean()) {
             System.out.println("sweet pineapple!");
         }
@@ -22,11 +22,11 @@ public class InvokationWithEmptyBranching {
     }
     static void test3(List<String> args) {
         for (String arg : args) {
-            test1();
+            test1(arg);
         }
     }
     public static void main(String[] args) {
-        test1();
+        test1(args[0]);
         test2();
         test3(Arrays.asList(args));
     }

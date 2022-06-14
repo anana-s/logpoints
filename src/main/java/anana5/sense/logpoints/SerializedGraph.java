@@ -35,24 +35,24 @@ public class SerializedGraph implements anana5.graph.Graph<GrapherVertex> {
     //     }
     // }
 
-    private SerializedVertex visit(Drop<GrapherVertex, Rain<GrapherVertex>> drop) {
+    private GrapherVertex visit(Drop<GrapherVertex, Rain<GrapherVertex>> drop) {
         var vertex = drop.get();
         next.put(vertex.id(), drop.next());
         var matcher = SerializedVertex.serialize(vertex);
         return matcher;
     }
 
-    public ArrayList<SerializedVertex> roots() {
+    public ArrayList<GrapherVertex> roots() {
         return rain.unfix().map(this::visit).collect(Collectors.toCollection(ArrayList::new)).join();
 
     }
 
     @Override
-    public ArrayList<SerializedVertex> from(GrapherVertex source) {
+    public ArrayList<GrapherVertex> from(GrapherVertex source) {
         return from(source.id());
     }
 
-    public ArrayList<SerializedVertex> from(long source) {
+    public ArrayList<GrapherVertex> from(long source) {
         if (!next.containsKey(source)) {
             throw new UnsupportedOperationException("value not yet reached");
         }
