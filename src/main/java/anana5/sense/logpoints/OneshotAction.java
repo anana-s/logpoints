@@ -17,7 +17,7 @@ class OneshotAction implements Action {
     }
 
     @Override
-    public float evaluate() {
+    public double evaluate() {
         return delegate.evaluate();
     }
 

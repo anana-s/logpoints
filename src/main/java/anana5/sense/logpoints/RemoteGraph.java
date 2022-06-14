@@ -14,7 +14,7 @@ import anana5.graph.Graph;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceMap;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap;
 
-public class RemoteGraph implements Graph<SerializedVertex>, AutoCloseable {
+public class RemoteGraph implements Graph<GrapherVertex>, AutoCloseable {
     private final Socket socket;
     private final ObjectInputStream in;
     private final ObjectOutputStream out;
@@ -62,7 +62,7 @@ public class RemoteGraph implements Graph<SerializedVertex>, AutoCloseable {
     }
 
     @Override
-    public List<SerializedVertex> from(SerializedVertex source) {
+    public List<SerializedVertex> from(GrapherVertex source) {
         return from(source.id());
     }
 
@@ -84,7 +84,7 @@ public class RemoteGraph implements Graph<SerializedVertex>, AutoCloseable {
     }
 
     @Override
-    public Set<SerializedVertex> to(SerializedVertex target) {
+    public Set<SerializedVertex> to(GrapherVertex target) {
         throw new UnsupportedOperationException();
     }
 

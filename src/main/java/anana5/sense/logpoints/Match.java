@@ -1,15 +1,15 @@
 package anana5.sense.logpoints;
 
 final class Match {
-    private final SerializedVertex ref;
+    private final GrapherVertex ref;
     private final Line line;
 
-    Match(SerializedVertex ref, Line line) {
+    Match(GrapherVertex ref, Line line) {
         this.ref = ref;
         this.line = line;
     }
 
-    public SerializedVertex serial() {
+    public GrapherVertex vertex() {
         return ref;
     }
 

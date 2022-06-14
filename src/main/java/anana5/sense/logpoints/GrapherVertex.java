@@ -3,14 +3,16 @@ package anana5.sense.logpoints;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-
+import anana5.util.Counter;
 import soot.jimple.Stmt;
 import soot.jimple.internal.JReturnVoidStmt;
 
-public interface Vertex extends anana5.util.Ref<Stmt> {
+public interface GrapherVertex extends anana5.util.Ref<Stmt> {
     boolean returns();
 
-    Vertex copy();
+    long id();
+
+    GrapherVertex copy();
 
     default boolean sentinel() {
         return !check();
@@ -20,31 +22,39 @@ public interface Vertex extends anana5.util.Ref<Stmt> {
 
     SourceMapTag tag();
 
-    public static Vertex of(Stmt stmt) {
+    static Counter counter = new Counter();
+
+    public static GrapherVertex of(Stmt stmt) {
         if (stmt == null) {
             return of();
         } else if (Grapher.isReturn(stmt)) {
             return ret();
         } else {
-            return new SimpleBox(stmt);
+            return new SimpleBox(counter.probe(), stmt);
         }
     }
 
-    public static Vertex of(Vertex other) {
+    public static GrapherVertex of(GrapherVertex other) {
         return other.copy();
     }
 
-    public static Vertex of() {
+    public static GrapherVertex of() {
         return SentinelBox.instance;
     }
 
-    public static Vertex ret() {
+    public static GrapherVertex ret() {
         return ReturnBox.instance;
     }
 
-    public static class ReturnBox implements Vertex {
+    public static class ReturnBox implements GrapherVertex {
+        private static final long id = counter.probe();
         private static final Stmt stmt = new JReturnVoidStmt();
         private static final ReturnBox instance = new ReturnBox();
+
+        @Override
+        public long id() {
+            return id;
+        }
 
         @Override
         public Stmt get() {
@@ -62,7 +72,7 @@ public interface Vertex extends anana5.util.Ref<Stmt> {
         }
 
         @Override
-        public Vertex copy() {
+        public GrapherVertex copy() {
             return this;
         }
 
@@ -77,8 +87,14 @@ public interface Vertex extends anana5.util.Ref<Stmt> {
         }
     }
 
-    public static class SentinelBox implements Vertex {
+    public static class SentinelBox implements GrapherVertex {
+        private static final long id = counter.probe();
         private static final SentinelBox instance = new SentinelBox();
+
+        @Override
+        public long id() {
+            return id;
+        }
 
         @Override
         public Stmt get() {
@@ -91,7 +107,7 @@ public interface Vertex extends anana5.util.Ref<Stmt> {
         }
 
         @Override
-        public Vertex copy() {
+        public GrapherVertex copy() {
             return this;
         }
 
@@ -111,10 +127,11 @@ public interface Vertex extends anana5.util.Ref<Stmt> {
         }
     }
 
-    public static class SimpleBox implements Vertex {
+    public static class SimpleBox implements GrapherVertex {
+        private final long id;
         private final Stmt stmt;
 
-        private SimpleBox(Stmt stmt) {
+        private SimpleBox(long id, Stmt stmt) {
             if (stmt == null) {
                 throw new NullPointerException("stmt must not be null");
             }
@@ -126,9 +143,15 @@ public interface Vertex extends anana5.util.Ref<Stmt> {
             if (!stmt.containsInvokeExpr()) {
                 throw new IllegalArgumentException("stmt must invoke");
             }
+            this.id = id;
             this.stmt = stmt;
         }
 
+        @Override
+        public long id() {
+            return id;
+        }
+        
         @Override
         public SourceMapTag tag() {
             SourceMapTag tag = (SourceMapTag)stmt.getTag("SourceMapTag");
@@ -153,7 +176,7 @@ public interface Vertex extends anana5.util.Ref<Stmt> {
         }
 
         @Override
-        public Vertex copy() {
+        public GrapherVertex copy() {
             return this;
         }
 

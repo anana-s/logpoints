@@ -8,8 +8,10 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.regex.Pattern;
@@ -19,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import anana5.graph.Graph;
+import anana5.sense.logpoints.SearchTree.Action;
 import anana5.util.ListF;
 import anana5.util.Maybe;
 import anana5.util.PList;
@@ -28,7 +31,9 @@ import net.sourceforge.argparse4j.inf.ArgumentParser;
 import net.sourceforge.argparse4j.inf.ArgumentParserException;
 import net.sourceforge.argparse4j.inf.Namespace;
 
-public class Matcher implements Callable<Collection<State>> {
+import static java.lang.Math.*;
+
+public class Matcher implements Callable<Collection<Matcher.State>> {
     private static final Logger log = LoggerFactory.getLogger(Match.class);
 
     public static void main(String[] args) {
@@ -56,8 +61,7 @@ public class Matcher implements Callable<Collection<State>> {
         }
 
         // traverse graph
-        try (var in = ns.<InputStream>get("input");
-                var graph = RemoteGraph.connect(ns.get("address"))) {
+        try (var in = ns.<InputStream>get("input"); var graph = RemoteGraph.connect(ns.get("address"))) {
             // create a plist of all logging statements
             var reader = new BufferedReader(new InputStreamReader(in));
             final var lines = PList.<Integer, Line>unfold(0, i -> {
@@ -74,8 +78,7 @@ public class Matcher implements Callable<Collection<State>> {
                 });
             });
 
-            var matcher =
-                    new Matcher(graph, graph.roots(), lines, Pattern.compile(ns.get("pattern")));
+            var matcher = new Matcher(graph, graph.roots(), lines, Pattern.compile(ns.get("pattern")));
 
             matcher.call();
 
@@ -92,9 +95,11 @@ public class Matcher implements Callable<Collection<State>> {
         }
     }
 
-    final Graph<SerializedVertex> graph;
-    final Collection<SerializedVertex> roots;
+    final Graph<GrapherVertex> graph;
+    final List<Head> roots;
     final Pattern pattern;
+
+    final SearchTree tree;
 
     final PList<Line> lines;
     final int MAX_RECURSION = 0;
@@ -103,21 +108,23 @@ public class Matcher implements Callable<Collection<State>> {
     final int MAX_HEADS = 3000;
     final int LOOK_AHEAD = 10;
 
-    private Matcher(Graph<SerializedVertex> graph, Collection<SerializedVertex> roots, PList<Line> lines,
+    private Matcher(Graph<GrapherVertex> graph, Collection<? extends GrapherVertex> roots, PList<Line> lines,
             Pattern pattern) throws IOException {
         this.graph = graph;
-        this.roots = roots;
+        this.roots = roots.stream().map(v -> new Head(v))
+                .collect(Collectors.toCollection(ArrayList::new));
         this.lines = lines;
         this.pattern = pattern;
+
+        State root = new State(this.roots, lines);
+
+        tree = new SearchTree(root, 5, sqrt(2));
     }
 
+    @Override
     public Collection<State> call() throws IOException {
         // main loop
         final Collection<State> out = new ArrayList<>();
-
-        List<Head> heads = roots.stream().map(v -> new Head(this, v)).collect(Collectors.toCollection(ArrayList::new));
-
-        SearchTree search = new SearchTree(new State(heads, lines));
 
         //TODO: run the search
 
@@ -150,9 +157,162 @@ public class Matcher implements Callable<Collection<State>> {
         return out;
     }
 
-    private Set<SerializedVertex> flatten(Collection<SerializedVertex> matchers, int rec) {
-        Set<SerializedVertex> out = new HashSet<>();
-        for (SerializedVertex matcher : matchers) {
+    class State implements SearchTree.State {
+        private PList<Line> lines;
+        private final List<Head> heads;
+        private final List<Line> skips;
+
+        State(List<Head> roots, PList<Line> lines) {
+            this(roots, Collections.emptyList(), lines);
+        }
+
+        State(List<Head> heads, List<Line> skips, PList<Line> lines) {
+            this.heads = new ArrayList<>(heads);
+            this.skips = new ArrayList<>(skips);
+            this.lines = lines;
+        }
+
+        @Override
+        public List<Action> actions() {
+            List<SearchTree.Action> actions = new ArrayList<>();
+            OneshotAction.Context context = new OneshotAction.Context();
+            actions.add(context.oneshot(new SkipAction()));
+
+            for (int i = 0; i < heads.size(); i++) {
+                actions.add(context.oneshot(new NextStateAction(i)));
+            }
+
+            return actions;
+        }
+
+        class SkipAction implements SearchTree.Action {
+            @Override
+            public State apply() {
+                skips.add(advance());
+                return State.this;
+            }
+
+            @Override
+            public double evaluate() {
+                return -1;
+            }
+
+            @Override
+            public SkipAction clone() {
+                return State.this.clone().new SkipAction();
+            }
+        }
+
+        class NextStateAction implements SearchTree.Action {
+            private final int idx;
+
+            NextStateAction(int idx) {
+                this.idx = idx;
+            }
+
+            @Override
+            public State apply() {
+                Head head = head(idx);
+                head.accept(advance());
+                return State.this;
+            }
+
+            @Override
+            public double evaluate() {
+                //TODO: implement
+                return 0;
+            }
+
+            @Override
+            public NextStateAction clone() {
+                return State.this.clone().new NextStateAction(idx);
+            }
+        }
+
+        @Override
+        public double evaluate() {
+            return 0;
+        }
+
+        Line line() {
+            return lines.head().join();
+        }
+
+        Line advance() {
+            var line = lines.head().join();
+            lines = lines.tail();
+            return line;
+        }
+
+        public Collection<Group> groups() {
+            return heads.stream().map(head -> head.group).distinct().collect(Collectors.toList());
+        }
+
+        public Head head(int i) {
+            return heads.get(i);
+        }
+
+        public State clone() {
+            return new State(heads.stream().map(Head::clone).collect(Collectors.toList()), skips, lines);
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj == null) {
+                return false;
+            }
+            if (obj == this) {
+                return true;
+            }
+            if (obj.getClass() != getClass()) {
+                return false;
+            }
+            State other = (State) obj;
+            return compareTo(other) == 0;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(heads, skips);
+        }
+
+    }
+
+    class Head implements Cloneable {
+
+        private final GrapherVertex stmt;
+        final Group group;
+
+        Head(GrapherVertex stmt) {
+            this(stmt, new Group());
+        }
+
+        Head(GrapherVertex stmt, Group group) {
+            this.stmt = stmt;
+            this.group = group;
+        }
+
+        public List<Head> accept(Line line) {
+            List<Head> out = new ArrayList<>();
+            match(stmt, line).map(match -> {
+                for (GrapherVertex next : graph.from(match.vertex())) {
+                    Group group = this.group.clone();
+                    group.add(match);
+                    out.add(new Head(next, group));
+                }
+                return null;
+            });
+            return Collections.unmodifiableList(out);
+        }
+
+        public Head clone() {
+            return new Head(this.stmt, this.group.clone());
+        }
+    }
+
+    private Set<GrapherVertex> flatten(Collection<? extends GrapherVertex> matchers, int rec) {
+        Set<GrapherVertex> out = new HashSet<>();
+        for (GrapherVertex matcher : matchers) {
             if (matcher.sentinel()) {
                 if (rec == 0) {
                     continue;
@@ -166,7 +326,7 @@ public class Matcher implements Callable<Collection<State>> {
         return out;
     }
 
-    Maybe<Match> match(SerializedVertex serial, Line line) {
+    Maybe<Match> match(GrapherVertex serial, Line line) {
         SourceMapTag smap = serial.tag();
         var matcher = pattern.matcher(line.get());
 

@@ -1,24 +1,25 @@
 package anana5.sense.logpoints;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 import java.util.function.Function;
 
+import static java.lang.Math.*;
+
 class SearchTree {
     interface Evaluable<T extends Evaluable<T>> extends Comparable<T> {
-        float evaluate();
+        double evaluate();
 
         @Override
         default int compareTo(T o) {
-            return Float.compare(this.evaluate(), o.evaluate());
+            return Double.compare(this.evaluate(), o.evaluate());
         }
     }
 
     interface State extends Evaluable<State>, Cloneable {
-        Collection<? extends Action> actions();
+        List<? extends Action> actions();
         State clone();
     }
 
@@ -29,86 +30,120 @@ class SearchTree {
     }
 
     @FunctionalInterface
-    interface Selector<T extends Evaluable<T>> extends Function<List<T>, T> {
+    interface Selector<T extends Evaluable<T>> extends Function<List<? extends T>, T> {
     }
     
 
     private final SearchTreeNode root;
-    private final Selector<Action> simulator;
+    private final Random random;
 
-    SearchTree(State state) {
+    private final double c;
+    private final int depth;
+
+    SearchTree(State state, int depth, double c) {
         this.root = new SearchTreeNode(state, null);
-        Random rng = new Random();
-        this.simulator = actions -> actions.get(rng.nextInt(actions.size()));
+        this.random = new Random();
+        
+        this.depth = depth;
+        this.c = c;
     }
 
     void step() {
-        Random rng = new Random();
-        SearchTreeNode leaf = root.select(nodes -> nodes.stream().max((a, b) -> a.compareTo(b)).get());
-        SearchTreeNode candidate = leaf.expand().get(rng.nextInt(leaf.expand().size()));
-        float score = candidate.simulate(simulator, Integer.MAX_VALUE);
+        SearchTreeNode leaf = root.select();
+        List<SearchTreeNode> candidates = leaf.expand();
+        SearchTreeNode candidate = candidates.get(random.nextInt(candidates.size()));
+        double score = candidate.simulate();
         candidate.backpropagate(score);
     }
 
     class SearchTreeNode implements Evaluable<SearchTreeNode> {
         private final State state;
         private final SearchTreeNode parent;
-        private final int depth;
         private ArrayList<SearchTreeNode> children;
-        private int discovered;
-        private float total;
+        private int n;
+        private double w;
 
         SearchTreeNode(State state, SearchTreeNode parent) {
             this.state = state;
             this.parent = parent;
-            if (parent == null) {
-                this.depth = 0;
-            } else {
-                this.depth = parent.depth + 1;
-            }
-            this.children = new ArrayList<>();
-            this.discovered = 0;
-            this.total = 0;
+
+            this.children = null;
+
+            this.n = 0;
+            this.w = 0;
         }
 
         @Override
-        public float evaluate() {
-            if (discovered <= 0) {
-                return state.evaluate();
+        public double evaluate() {
+            if (n <= 0) {
+                return Double.MAX_VALUE;
             }
-            return total / discovered;
+
+            // UCT recommended selection formula; see https://link.springer.com/chapter/10.1007/11871842_29.
+            return w / n + c * sqrt(log(parent.n) / n);
         }
 
-        SearchTreeNode select(Selector<SearchTreeNode> selector) {
+        SearchTreeNode select() {
             SearchTreeNode selected = this;
 
-            while (!selected.children.isEmpty()) {
-                selected = selector.apply(selected.children);
+            while (selected.isExpanded() && !selected.isTerminal()) {
+                selected = Collections.max(selected.children());
             }
 
             return selected;
         }
 
+        List<SearchTreeNode> children() {
+            if (!isExpanded()) {
+                throw new IllegalStateException("node is not yet expanded");
+            }
+
+            return Collections.unmodifiableList(children);
+        }
+
         List<SearchTreeNode> expand() {
-            children.clear();
+            if (isExpanded()) {
+                return Collections.unmodifiableList(children);
+            }
+
+            children = new ArrayList<>();
             for (Action action : state.actions()) {
                 SearchTreeNode child = new SearchTreeNode(action.clone().apply(), this);
                 children.add(child);
             }
+
             return Collections.unmodifiableList(children);
         }
 
-        float simulate(Selector<Action> selector, int depth) {
+        double simulate() {
             State simulation = state.clone();
-            //TODO: run simulation
+            Random rng = new Random();
+
+            for (int d = 0; d < depth; d++) {
+                List<? extends Action> actions = simulation.actions();
+                Action action = actions.get(rng.nextInt(actions.size()));
+                simulation = action.apply();
+            }
+
             return simulation.evaluate();
         }
 
-        void backpropagate(float score) {
+        void backpropagate(double score) {
             for (SearchTreeNode node = this; node != null; node = node.parent) {
-                node.discovered++;
-                node.total += score;
+                node.n++;
+                node.w += score;
             }
+        }
+
+        boolean isExpanded() {
+            return children != null;
+        }
+
+        boolean isTerminal() {
+            if (!isExpanded()) {
+                throw new IllegalStateException("node is not yet expanded");
+            }
+            return children.isEmpty();
         }
     }
 }

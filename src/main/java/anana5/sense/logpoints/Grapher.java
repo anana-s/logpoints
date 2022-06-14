@@ -228,13 +228,13 @@ public class Grapher {
      * RainGraph builder
      */
 
-    private final Map<SootMethod, Rain<Vertex>> done = new Object2ReferenceOpenHashMap<>();
-    private Graph graph;
+    private final Map<SootMethod, Rain<GrapherVertex>> done = new Object2ReferenceOpenHashMap<>();
+    private SerializedGraph graph;
     private CallGraph cg;
 
-    public synchronized Graph get() {
+    public synchronized SerializedGraph get() {
         if (graph == null) {
-            graph = new Graph(build());
+            graph = new SerializedGraph(build());
         }
         return graph;
     }
@@ -244,7 +244,7 @@ public class Grapher {
         this.graph = null;
     }
 
-    protected synchronized final Rain<Vertex> build() {
+    protected synchronized final Rain<GrapherVertex> build() {
         if (this.cg == null) {
             Scene.v().setEntryPoints(targets);
             Scene.v().loadNecessaryClasses();
@@ -285,16 +285,16 @@ public class Grapher {
         return false;
     }
 
-    private final Rain<Vertex> build(Stmt invoker, PList<SootMethod> methods, ObjectSet<SootMethod> strand) {
+    private final Rain<GrapherVertex> build(Stmt invoker, PList<SootMethod> methods, ObjectSet<SootMethod> strand) {
         final var mr = Rain.merge(methods.map(m -> build(invoker, m, strand)));
         return deduplicate(mr);
     }
 
-    private final Rain<Vertex> build(Stmt invoker, SootMethod method, ObjectSet<SootMethod> strand) {
+    private final Rain<GrapherVertex> build(Stmt invoker, SootMethod method, ObjectSet<SootMethod> strand) {
         if (done.containsKey(method)) {
             if (strand.contains(method)) {
                 logger.trace("{} added sentinel", format(method));
-                return Rain.of(Drop.of(Vertex.of(), done.get(method)));
+                return Rain.of(Drop.of(GrapherVertex.of(), done.get(method)));
             } else {
                 logger.trace("{} loaded from cache", format(method));
                 return done.get(method);
@@ -316,7 +316,7 @@ public class Grapher {
     class CFGFactory {
         private final SootMethod method;
         private final ExceptionalUnitGraph cfg;
-        private final Map<Stmt, Rain<Vertex>> memo;
+        private final Map<Stmt, Rain<GrapherVertex>> memo;
         // private final Map<Tuple<Stmt, Ref>, Rain<Ref>> connector;
         private final String methodName;
         private final String sourceFile;
@@ -347,18 +347,18 @@ public class Grapher {
             return stmt;
         }
 
-        public final Rain<Vertex> build(ObjectSet<SootMethod> cgstrand) {
+        public final Rain<GrapherVertex> build(ObjectSet<SootMethod> cgstrand) {
             final var stmts = PList.from(cfg.getHeads()).map(unit -> (Stmt)unit);
             final var rain = build(null, stmts, new ObjectOpenHashSet<>(), cgstrand);
             return rain;
         }
 
-        private final Rain<Vertex> build(Stmt pred, PList<Stmt> stmts, ObjectSet<Stmt> cfgstrand, ObjectSet<SootMethod> cgstrand) {
+        private final Rain<GrapherVertex> build(Stmt pred, PList<Stmt> stmts, ObjectSet<Stmt> cfgstrand, ObjectSet<SootMethod> cgstrand) {
             final var drops = stmts.flatmap(stmt -> build(pred, stmt, cfgstrand, cgstrand).unfix());
             return deduplicate(Rain.fix(drops));
         }
 
-        private final Rain<Vertex> build(Stmt pred, Stmt stmt, ObjectSet<Stmt> cfgstrand, ObjectSet<SootMethod> cgstrand) {
+        private final Rain<GrapherVertex> build(Stmt pred, Stmt stmt, ObjectSet<Stmt> cfgstrand, ObjectSet<SootMethod> cgstrand) {
             if (memo.containsKey(stmt)) {
                 logger.trace("{} loaded from cache", format(method, stmt));
                 return memo.get(stmt);
@@ -372,7 +372,7 @@ public class Grapher {
             if (isReturn(stmt)) {
                 logger.trace("{} returned", format(method, stmt));
                 tag(stmt);
-                var rain = Rain.of(Drop.of(Vertex.ret(), Rain.of()));
+                var rain = Rain.of(Drop.of(GrapherVertex.ret(), Rain.of()));
                 memo.put(stmt, rain);
                 return rain;
             }
@@ -420,7 +420,7 @@ public class Grapher {
                 logger.trace("{} matched", format(method, stmt));
                 tag(stmt);
                 var nextRain = build(stmt, next, new ObjectOpenHashSet<>(), cgstrand);
-                var rain = Rain.of(Drop.of(Vertex.of(stmt), nextRain));
+                var rain = Rain.of(Drop.of(GrapherVertex.of(stmt), nextRain));
                 memo.put(stmt, rain);
                 return rain;
             }
@@ -471,7 +471,7 @@ public class Grapher {
         }
     }
 
-    private static Rain<Vertex> connect(Rain<Vertex> rain, Rain<Vertex> rets) {
+    private static Rain<GrapherVertex> connect(Rain<GrapherVertex> rain, Rain<GrapherVertex> rets) {
         return rain.fold(drops -> Rain.merge(drops.map(drop -> {
             if (drop.get().returns()) {
                 return rets;
@@ -500,7 +500,7 @@ public class Grapher {
      * @param rain
      * @return
      */
-    private static Rain<Vertex> deduplicate(Rain<Vertex> rain) {
+    private static Rain<GrapherVertex> deduplicate(Rain<GrapherVertex> rain) {
         final var drops = rain.unfix();
         return Rain.bind(drops.count().map(count -> {
             if (count == 1) {
@@ -519,8 +519,8 @@ public class Grapher {
      * deduplicates plist of drops with the same stmt
      */
 
-    private static PList<Drop<Vertex, Rain<Vertex>>> deduplicate(long count, PList<Drop<Vertex, Rain<Vertex>>> drops) {
-        final var reduced = new Object2ReferenceOpenHashMap<Stmt, List<Rain<Vertex>>>();
+    private static PList<Drop<GrapherVertex, Rain<GrapherVertex>>> deduplicate(long count, PList<Drop<GrapherVertex, Rain<GrapherVertex>>> drops) {
+        final var reduced = new Object2ReferenceOpenHashMap<Stmt, List<Rain<GrapherVertex>>>();
         return PList.bind(drops.foldr(Promise.nil(), (promise, drop) -> {
             final var ref = drop.get();
             final var list = reduced.computeIfAbsent(ref.get(), stmt -> new ArrayList<>());
@@ -531,7 +531,7 @@ public class Grapher {
                 return drops;
             }
             return PList.from(reduced.entrySet()).map(entry -> {
-                final Vertex ref = Vertex.of(entry.getKey());
+                final GrapherVertex ref = GrapherVertex.of(entry.getKey());
                 final var list = entry.getValue();
                 if (list.size() == 1) {
                     return Drop.of(ref, list.get(0));

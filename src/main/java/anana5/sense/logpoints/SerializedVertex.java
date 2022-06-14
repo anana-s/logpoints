@@ -7,15 +7,18 @@ import java.util.List;
 
 import soot.jimple.Stmt;
 
-public class SerializedVertex implements Serializable, Vertex {
+public class SerializedVertex implements Serializable, GrapherVertex {
     private final long id;
     private final ArrayList<String> args;
     private final boolean returns;
     private final boolean sentinel;
     private final SourceMapTag tag;
 
-    public SerializedVertex(long id, Vertex v) {
-        this(id, v.args(), v.returns(), v.sentinel(), v.tag());
+    public static SerializedVertex serialize(GrapherVertex v) {
+        if (v instanceof SerializedVertex) {
+            return (SerializedVertex)v;
+        }
+        return new SerializedVertex(v.id(), v.args(), v.returns(), v.sentinel(), v.tag());
     }
 
     public SerializedVertex(long id, List<String> args, boolean returns, boolean sentinel, SourceMapTag tag) {
@@ -52,7 +55,7 @@ public class SerializedVertex implements Serializable, Vertex {
     }
 
     @Override
-    public Vertex copy() {
+    public GrapherVertex copy() {
         return new SerializedVertex(id, args, returns, sentinel, tag);
     }
 
